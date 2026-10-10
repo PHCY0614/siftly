@@ -344,7 +344,7 @@
     "加入待分析": "Add to pending",
     "標記不分析": "Mark as skipped",
     "資料傳送說明": "Where your data goes",
-    "分析時會把文章純文字直接傳給你選擇的 Google AI，結果寫回同一個 Notion 資料庫，不經過開發者的伺服器。": "Analysis sends the article's plain text straight to the Google AI you choose and writes the result back to the same Notion database. Nothing passes through the developer's servers.",
+    "分析時會把文章純文字直接傳給你選擇的 Google AI，結果寫回同一個 Notion 資料庫，不經過開發者的伺服器。整理主題時只傳送主題名稱，不傳送完整文章。": "Analysis sends the article's plain text straight to the Google AI you choose and writes the result back to the same Notion database. Nothing passes through the developer's servers. Organising topics sends topic names only, never full articles.",
     "查看完整隱私與資料流說明": "Read the full privacy and data-flow notes",
     "Integration 必須已獲邀存取你的文章資料庫。": "The integration must be invited to your article database.",
     "第一次設定？三步驟完成 Notion 連線": "First time? Connect Notion in three steps",

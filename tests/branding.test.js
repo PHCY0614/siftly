@@ -28,6 +28,7 @@ function testUserFacingCopy() {
     "popup.html",
     "options.html",
     "README.md",
+    "README.en.md",
     "README.zh-TW.md",
     "PRIVACY.md",
     "PRIVACY.zh-TW.md",
@@ -39,7 +40,8 @@ function testUserFacingCopy() {
     assert.doesNotMatch(text, OLD_PRODUCT_NAME, `${name} still uses the old product name`);
   }
 
-  const englishFiles = ["README.md", "PRIVACY.md"];
+  // README.md is the Chinese home page; README.en.md is the English one. README.zh-TW.md only points to README.md.
+  const englishFiles = ["README.en.md", "PRIVACY.md"];
   for (const name of englishFiles) {
     const text = source(name);
     assert.match(text, new RegExp(EN_SUBTITLE), `${name} must use the English subtitle`);
@@ -47,7 +49,7 @@ function testUserFacingCopy() {
     assert.doesNotMatch(text, new RegExp(ZH_SUBTITLE), `${name} should not use the Chinese subtitle`);
   }
 
-  const chineseFiles = ["popup.html", "options.html", "README.zh-TW.md", "PRIVACY.zh-TW.md"];
+  const chineseFiles = ["popup.html", "options.html", "README.md", "PRIVACY.zh-TW.md"];
   for (const name of chineseFiles) {
     const text = source(name);
     assert.match(text, new RegExp(ZH_SUBTITLE), `${name} must use the Chinese subtitle`);
@@ -72,12 +74,13 @@ function testSettingsPageCopy() {
   assert.match(popupCss, /\.hero-subtitle \{[\s\S]*?font-size: 14px;/);
 
   assert.match(html, /整理主題時只傳送主題名稱，不傳送完整文章/);
-  assert.match(html, /不經過開發者營運的中介伺服器/);
+  assert.match(html, /不經過開發者的伺服器/);
   assert.doesNotMatch(html, /分析提示詞/);
 
   assert.match(html, /id="fields-heading">準備 Notion 欄位/);
   assert.match(html, /這個工具會用到的欄位，不會影響你的內容與現有欄位。/);
-  assert.match(
+  assert.match(html, /id="prepare-fields"[^>]*>建立 Siftly 欄位</);
+  assert.doesNotMatch(
     html,
     /按「測試連線並準備欄位」會補齊缺少的欄位；完成後可在上方「準備待分析文章」選取文章加入分析，不必逐篇回到 Notion 設定狀態。分析後工具會先寫暫定主題，正式主題須你確認整理後才寫入。/
   );
@@ -86,10 +89,7 @@ function testSettingsPageCopy() {
   assert.doesNotMatch(html, /狀態流程：/);
 
   assert.match(html, /把暫定主題收成可共用的分類，再由你確認。/);
-  assert.match(
-    html,
-    /適合已有穩定分類的資料庫。開啟後，只要能由既有主題合理涵蓋，就會優先建議沿用；不適合時仍可建立新主題。/
-  );
+  assert.match(html, /開啟後，既有主題能涵蓋時會優先建議沿用。/);
   assert.doesNotMatch(html, /75 個去重/);
   assert.doesNotMatch(html, /下次掃描建議時生效/);
   assert.match(html, /Notion 中既有內容不會被刪除/);

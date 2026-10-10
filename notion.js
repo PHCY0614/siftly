@@ -277,6 +277,8 @@
   function bindColumns(columnMap) {
     const { columns, statusOptions } = columnMap;
     const propertyId = key => columns[key].id;
+    // For the query string's filter_properties, which this extension has only ever sent names to.
+    const propertyName = key => columns[key].name;
     const value = (page, key) => columnEntry(page?.properties, columns[key]);
     const plainList = (page, key) => richTextPlain(value(page, key)?.rich_text)
       .split(/[｜\n]+/u).map(shared.cleanText).filter(Boolean);
@@ -476,6 +478,7 @@
       isUnanalyzedArticle,
       pagePropertyValues,
       propertyId,
+      propertyName,
       queryPayload,
       statusName,
       statusUpdatePayload,

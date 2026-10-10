@@ -9,7 +9,7 @@ async function queryTopicOrganizerPages(fields, token, options = {}) {
   let done = false;
   const eligibleStatuses = new Set([N.STATUS.topicOrganize, N.STATUS.topicReview]);
   const queryPath = `/v1/data_sources/${fields.dataSourceId}/query?${["processingStatus", "provisionalTopics", "aiTopics"]
-    .map(key => `filter_properties[]=${encodeURIComponent(fields.propertyId(key))}`).join("&")}`;
+    .map(key => `filter_properties[]=${encodeURIComponent(fields.propertyName(key))}`).join("&")}`;
   do {
     const response = await notionRequest(queryPath, {
       method: "POST",
