@@ -1,198 +1,73 @@
 # Siftly
 
-**AI Content Organiser for Notion**
+**Notion x AI 內容整理工具**
 
-*Product UI and AI output are currently in Traditional Mandarin (Taiwan); an English UI is planned later.*
+[English](README.en.md)
 
-> Let AI handle the first pass while you keep the final say over how your knowledge base is organised.
+讓 AI 負責初步整理，讓你保留最後的分類決定權。
 
-Siftly is a Chrome extension that helps you organise articles stored in Notion. It analyses the plain text of a page, generates a Traditional Chinese title, summary, keywords, and provisional topics, and writes the results back to Notion.
+Siftly 是協助你整理 Notion 文章的 Chrome 擴充功能。它會分析頁面中的純文字，依你選擇的語言產生標題、摘要、關鍵字與暫定主題，再將結果寫回 Notion。適合文章收藏、閱讀筆記、研究資料與社群貼文。
 
-正體中文（臺灣）: [`README.zh-TW.md`](README.zh-TW.md)
+介面使用正體中文（臺灣）；AI 輸出可選擇正體中文或英文，預設為正體中文。
 
-The user interface is written in Traditional Chinese and localised for users in Taiwan. The source code and developer documentation are maintained primarily in English.
+## 主要功能
 
-## Requirements
+- 分析目前的 Notion 頁面，或批次處理「待分析」文章。
+- 產生 AI 標題、摘要、關鍵字與暫定主題，方便瀏覽、搜尋與篩選。
+- 整理相近或重複的暫定主題，由你確認、修改或捨棄分類建議。
+- 支援 Google AI Studio 與 Vertex AI，可自行選擇模型、調整內容長度與自訂摘要指引。
 
-- Google Chrome and the Notion web app
-- A Notion database used to store the articles
-- A Notion Integration Token with access to that database
-- An API key for Google AI Studio or Vertex AI
+「AI 暫定主題」是初步分類建議；「AI 主題」是你確認後的正式分類。
 
-The extension is configured for a specific Notion database and analyses pages that belong to that database. It must be used with the Notion web app in Chrome and does not operate directly in the Notion desktop or mobile apps.
+在設定頁的「進階分析設定 → 輸出語言」選擇英文，再按「儲存設定」，後續文章分析與主題整理便會使用英文。中英文可分別設定輸出長度與數量；英文標題與摘要長度以單字數計算。切換語言不會自動翻譯既有內容或已確認的主題名稱。
 
-## Why This Tool Exists
+![Notion 資料庫中的 AI 分析結果](docs/images/notion-analysis-results.png)
 
-Saving an article to Notion is easy. Naming it, summarising it, adding useful keywords, and keeping its topics organised over time takes much more work. As a collection grows, doing all of this manually becomes time-consuming and difficult to keep consistent.
+## 使用需求
 
-Giving an AI complete control over the final taxonomy creates a different problem: duplicate labels, overly narrow categories, and topic names that do not match the way you use your knowledge base.
+- Google Chrome 與 Notion 網頁版。
+- 一個存放文章的 Notion 資料庫，以及能存取該資料庫的 Notion Integration Token。
+- Google AI Studio 或 Vertex AI 的 API Key。
 
-This extension therefore separates the workflow into two stages. AI first analyses each article and produces provisional results. You then review its organisation suggestions and decide which final topics to use. AI reduces repetitive work without taking control of your taxonomy.
+每次使用一個設定好的資料庫。操作需在 Chrome 的 Notion 網頁版進行。
 
-## What You Can Use It For
+## 安裝與設定
 
-Siftly is suitable for organising:
+### 安裝
 
-- Saved articles and read-later collections
-- Reading notes and research material
-- Social posts and personal records
-- Any growing collection of text that needs consistent search and categorisation
+1. 從 GitHub 的 **Releases** 下載版本；也可以使用 **Code → Download ZIP**。
+2. 將 ZIP 完整解壓縮至固定資料夾。
+3. 在 Chrome 開啟 `chrome://extensions`，啟用「開發人員模式」。
+4. 按「載入未封裝項目」，選擇內含 `manifest.json` 的資料夾。
 
-The extension reads plain text from pages in a selected Notion database, sends it to the AI service you choose, and writes the structured results back to the same database.
+手動安裝的版本不會自動更新。下載新版本並替換檔案後，請回到上述頁面按「重新載入」。
 
-## Workflow
+### 連接 Notion 與 AI
 
-1. Use `準備待分析文章` (“Prepare articles for analysis”) in settings to select a batch, or mark pages as `待分析` (Pending Analysis) in Notion.
-2. Analyse the current page, or scan the database and start a batch.
-3. Write the generated title, summary, keywords, and provisional topics back to Notion.
-4. Scan the accumulated provisional topics and generate organisation suggestions.
-5. Review, edit, or discard the suggestions to complete the final taxonomy.
+1. 建立 Notion Internal Integration，並在目標資料庫的 `Add connections` 將資料庫分享給它。
+2. 開啟擴充功能設定，填入 Notion Integration Token，按「載入可用資料庫」並選擇目標資料庫。
+3. 選擇 AI 服務商與模型，填入對應的 API Key，再按「儲存設定」。
+4. 按「測試連線並準備欄位」。工具會補齊必要欄位；若缺少「整理狀態」欄位或「待分析」選項，會先詢問，選擇「新增並繼續」後才建立或補齊。
 
-## Installation
+若目標資料庫未出現在清單，請先確認已分享給 Integration；也可以在進階設定手動輸入資料庫網址或 Data Source ID。
 
-This extension is not currently available on the Chrome Web Store and must be installed manually from GitHub.
+## 開始使用
 
-1. Download the latest version from the GitHub **Releases** page. If no release is available yet, select **Code → Download ZIP**.
-2. Extract the downloaded ZIP to a permanent folder.
-3. Enter `chrome://extensions` in the Chrome address bar.
-4. Enable **Developer mode** in the upper-right corner.
-5. Click **Load unpacked**.
-6. Select the extracted folder that contains `manifest.json`.
-7. Create a Notion Internal Integration, then use `Add connections` in the target database to share it with that Integration.
-8. Open the extension settings, paste the Notion Integration Token, click `載入可用資料庫` (“Load available databases”), choose one active data source from the authorised list, and enter the API key for your selected AI provider.
-9. Save the settings, then click `測試連線並準備欄位` (“Test connections and prepare properties”) to complete the connection and database property setup. If the database lacks the `整理狀態` Select property or the `待分析` option, the extension asks for confirmation first. It creates the property or completes the workflow options only after you choose `新增並繼續` (“Add and continue”).
+1. 在設定頁使用「準備待分析文章」，選取文章並按「加入待分析」；也可以直接在 Notion 將文章設為「待分析」。
+2. 開啟擴充功能，分析目前頁面，或掃描資料庫後開始批次分析。批次處理可停止、繼續或重試失敗項目。
+3. 使用主題整理功能，檢查累積的暫定主題與整理建議。
+4. 確認或修改建議後再套用，完成正式分類；不需要的候選可捨棄或暫時跳過。
 
-The list contains only data sources shared with that Integration, and only one database can be active at a time. If Notion Search has not indexed a database yet, the list exceeds the load limit, or the target is otherwise absent, expand the advanced settings and enter a database URL or Data Source ID manually.
+「準備待分析文章」只調整所選文章的整理狀態，不會呼叫 AI。**單頁重新分析會覆寫既有 AI 分析結果，並清除已確認的「AI 主題」**，之後需重新確認分類。
 
-Versions installed manually from GitHub do not update automatically. After downloading a new version and replacing the existing files, return to `chrome://extensions` and click **Reload** on the extension card.
+![AI 產生的主題整理建議](docs/images/topic-suggestions.png)
 
-## Features
+## 隱私
 
-### Analyse the Current Page or Run a Batch
+文章純文字與已套用的摘要指引會直接傳送到你選擇的 AI 服務商，結果寫回 Notion。圖片、影片、音訊、檔案與 PDF 不作為分析內容。Siftly 沒有開發者自建的中介伺服器，也沒有分析追蹤或遙測。
 
-For a first batch, use `準備待分析文章` in settings to load the most recently created articles whose organisation status and all AI analysis properties are empty. The first 10 articles are loaded and selected by default. You can load 50 at a time, load more, or select all loaded articles, up to 2,000 in one list. The loaded count is not the total number of articles in the database.
+AI 服務商的資料處理方式依方案與條款而異。使用 Google AI Studio 未付費服務前，請先閱讀[隱私與資料流說明](PRIVACY.zh-TW.md)。
 
-Review titles and short previews, then choose `加入待分析` (“Add to pending analysis”) or `標記不分析` (“Mark as do not analyse”). These actions only change the selected articles' organisation status and do not call AI; unselected articles are left unchanged. Existing analysis content and non-empty statuses are protected. Failed updates can be retried separately. Previews read only the first 10 top-level blocks and may omit nested content; open the Notion page if a preview is unavailable. To process an article marked `不分析` later, change its status to `待分析` in Notion.
+## 開發與授權
 
-On an individual Notion page, you can analyse the page currently open in the browser. On a database page, you can scan pages marked `待分析` and process them as a batch.
-
-While a batch is running, the popup shows the number of pending pages, items in the local queue, and failed analyses. You can stop or resume the batch and retry failed items. Moving between Notion pages does not interrupt an active queue.
-
-One scan accepts at most 2,000 pending pages. If the database contains more, the extension stops before creating a partial queue and asks you to narrow the pending set. Retrying failed analyses loads at most 40 failed pages at a time.
-
-<p align="center">
-  <img src="docs/images/batch-analysis.png" alt="Batch analysis and queue controls in the extension popup" width="380">
-</p>
-
-### Generate Structured Notion Content
-
-For each article, the extension can generate:
-
-- AI Title (`AI 標題`)
-- AI Summary (`AI 摘要`)
-- AI Keywords (`AI 關鍵字`)
-- Provisional AI Topics (`AI 暫定主題`)
-
-The results are written to their corresponding Notion properties, making a database easier to browse, filter, and search.
-
-`AI 暫定主題` contains provisional categories suggested for an individual article. `AI 主題` contains the confirmed final taxonomy. Batch analysis creates provisional topics without directly changing existing confirmed topics.
-
-![AI-generated results in a Notion database](docs/images/notion-analysis-results.png)
-
-### Consolidate Duplicate or Related Topics
-
-As a collection grows, AI may produce provisional topics with similar meanings but different names. Topic organisation reads the accumulated candidates and suggests a more consistent set of reusable categories.
-
-Each suggestion shows:
-
-- The proposed final topic name
-- The provisional topics that can be included
-- The reason for the suggestion and its confidence level
-- The number of pages that would be affected
-
-If your database already has a stable taxonomy, you can ask the organiser to prefer existing topics and avoid creating unnecessary new categories. Topic organisation uses only the organisation status, provisional topics, and existing confirmed topics. It does not resend article bodies, summaries, or keywords.
-
-![AI-generated topic organisation suggestions](docs/images/topic-suggestions.png)
-
-### Keep Final Classification Under Human Control
-
-No organisation suggestion is applied until you confirm it. For each suggestion or unclassified topic, you can:
-
-- Create the proposed final topic
-- Map it to an existing Notion topic
-- Enter your own topic name
-- Permanently discard an unwanted candidate
-- Skip it and review it again later
-
-Candidates that cannot be combined appropriately remain in the unclassified section instead of being forced into an unsuitable category.
-
-![Manual review for unclassified topics](docs/images/topic-review.png)
-
-### Choose an AI Provider
-
-The extension currently supports:
-
-- Google AI Studio
-- Vertex AI
-
-You choose the provider and model. Article content is sent only to the provider currently selected and is not sent to the other supported providers.
-
-## Advanced Analysis Settings
-
-You can adjust the amount and length of the generated content to match the purpose of your database. For example, a read-later collection may use shorter summaries and fewer topics, while research notes may benefit from more detailed summaries and additional keywords.
-
-The default values and supported ranges are:
-
-| Setting | Default | Supported range |
-| --- | ---: | ---: |
-| AI title character limit | 12 | 6–30 |
-| Minimum provisional topics | 1 | 1–5 |
-| Maximum provisional topics | 3 | 1–5 |
-| Number of keywords | 5 | 3–10 |
-| Minimum summary length | 100 characters | 50–500 characters |
-| Maximum summary length | 250 characters | 100–800 characters |
-
-The minimum number of provisional topics cannot exceed the maximum. The minimum summary length also cannot exceed the maximum summary length.
-
-These settings are applied to the AI prompt, output format, and result validation so that generated content follows the selected specification.
-
-For safety and predictable resource use, article plain text is limited to 120,000 characters. Near that limit, the extension asks the selected Google service to count the complete prompt and rejects requests above 350,000 input tokens. Generated responses are capped at 8,192 tokens.
-
-Use “Custom Summary Instructions” to describe the summary's tone, wording, expression, and focus, then select “Apply” to save. The text box displays only your own instructions. “Restore Defaults” clears the saved instructions so subsequent analyses use the default summary style. These buttons save only summary instructions and do not rewrite existing summaries. Instructions are sent to your selected AI provider; do not include credentials or private information.
-
-The settings page does not display or edit the complete analysis prompt. Custom instructions apply only to summaries; built-in language rules, data formats, and other analysis fields remain controlled by the extension. Summary length still follows the output specification. Use “Restore Default Specification” to restore this version's default lengths and counts.
-
-### AI Request Timeout
-
-The maximum wait time for a single AI request can be set to:
-
-- 3 minutes
-- 5 minutes (default)
-- 10 minutes
-- No limit
-
-If a request exceeds the selected limit, the extension stops that request and pauses the batch queue. It does not automatically resend the full article.
-
-## Development approach
-
-This project was conceived and is maintained by Penny Hsieh, who defines the requirements, workflows, interface direction, and acceptance criteria. The implementation, refactoring, and documentation were developed primarily with assistance from OpenAI Codex. Product direction and release decisions remain the responsibility of Penny Hsieh.
-
-## Running tests
-
-The extension has no separate build step. Chrome loads the unpacked files from the repository root.
-
-Development checks require Node.js 18 or later. From the project root, run:
-
-```bash
-npm test
-```
-
-This runs the existing Node tests in `tests/` (built-in `assert`, no extra test runner package). `npm run check` currently does the same thing and is the documented full check command.
-
-## Privacy
-
-The extension does not use a developer-operated relay server and does not include analytics or telemetry.
-
-Article text is sent directly from Notion to the AI provider you select. Providers that are not selected do not receive the content. Images, video, audio, files, and PDFs are not included as article analysis content.
-
-For the complete data flow, see [`PRIVACY.md`](PRIVACY.md) ([正體中文(臺灣)](PRIVACY.zh-TW.md)).
+由 Penny Hsieh 發想與維護，程式實作與文件整理主要由 OpenAI Codex 協助完成。採用 [MIT License](LICENSE)。
