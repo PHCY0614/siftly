@@ -41,6 +41,7 @@ async function resolveTopicReview(action, replacementTopic = "", customTopic = "
   }
 
   const config = await readConfig();
+  const fields = fieldsFor(config);
   const token = await requireNotionToken();
   let currentOptions = validTopicOptions(await readTopicOptions(config, token));
   const byKey = new Map(currentOptions.map(option => [N.topicKey(option.name), option.name]));
@@ -79,7 +80,7 @@ async function resolveTopicReview(action, replacementTopic = "", customTopic = "
   if (selectedTopic && !byKey.has(N.topicKey(selectedTopic))) {
     await notionRequest(`/v1/data_sources/${config.dataSourceId}`, {
       method: "PATCH",
-      body: N.topicOptionsUpdatePayload(currentOptions, [selectedTopic]),
+      body: fields.topicOptionsUpdatePayload(currentOptions, [selectedTopic]),
       retrySafe: true,
       token
     });
@@ -101,7 +102,7 @@ async function resolveTopicReview(action, replacementTopic = "", customTopic = "
 
   if (selectedTopic || action === "discard") {
     const currentPage = await notionRequest(`/v1/pages/${review.item.id}`, { token });
-    const currentValues = N.pagePropertyValues(currentPage);
+    const currentValues = fields.pagePropertyValues(currentPage);
     const candidateKey = N.topicKey(candidate);
     const unresolvedTopics = uniqueTopicNames(
       currentValues.provisionalTopics.filter(name => N.topicKey(name) !== candidateKey)
@@ -112,7 +113,7 @@ async function resolveTopicReview(action, replacementTopic = "", customTopic = "
     const status = unresolvedTopics.length ? N.STATUS.topicReview : N.STATUS.analyzed;
     await notionRequest(`/v1/pages/${review.item.id}`, {
       method: "PATCH",
-      body: N.topicApplyPayload(finalTopics, status, currentOptions, unresolvedTopics),
+      body: fields.topicApplyPayload(finalTopics, status, currentOptions, unresolvedTopics),
       retrySafe: true,
       token
     });
@@ -194,10 +195,9 @@ async function readConfiguredPage(id, config, token) {
 
 async function inspectPage(pageId) {
   const id = requirePageId(pageId);
-  // Popup open and REANALYZE_PAGE identity checks: GET only, no schema PATCH.
-  const { config, token } = await readyNotion({ mutateSchema: false });
+  const { config, fields, token } = await readyNotion();
   const page = await readConfiguredPage(id, config, token);
-  const values = N.pagePropertyValues(page);
+  const values = fields.pagePropertyValues(page);
   return {
     ...N.pageSummary(page),
     sourceDataSourceId: config.dataSourceId,
@@ -220,10 +220,10 @@ async function reviewCurrentPageTopics(pageId) {
   assertIdle();
 
   const id = requirePageId(pageId);
-  const { config, token } = await readyNotion();
+  const { config, fields, token } = await readyNotion();
   const page = await readConfiguredPage(id, config, token);
 
-  const values = N.pagePropertyValues(page);
+  const values = fields.pagePropertyValues(page);
   if (![N.STATUS.topicOrganize, N.STATUS.topicReview].includes(values.status)) {
     throw new AppError("目前頁面的整理狀態不是「待主題整理」或「待主題確認」", {
       code: "PAGE_TOPIC_REVIEW_STATUS_INVALID"
@@ -262,7 +262,7 @@ async function reviewCurrentPageTopics(pageId) {
   if (values.status === N.STATUS.topicOrganize) {
     await notionRequest(`/v1/pages/${id}`, {
       method: "PATCH",
-      body: N.statusUpdatePayload(N.STATUS.topicReview),
+      body: fields.statusUpdatePayload(N.STATUS.topicReview),
       retrySafe: true,
       token
     });

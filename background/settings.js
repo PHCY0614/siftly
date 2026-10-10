@@ -113,20 +113,21 @@ async function resolveDataSource(config, token) {
   return { dataSource, dataSourceId: dataSource.id, databaseId: database.id };
 }
 
+const FIELDS_NOT_READY_MESSAGE = "這個資料庫尚未準備 Siftly 欄位，請到設定頁準備欄位";
+
+// One sentence per conflict, naming the column to fix in Notion.
+function fieldConflictMessage(conflict) {
+  return conflict.reason === "duplicate"
+    ? `「${conflict.names.join("」與「")}」同時存在，請只保留一個`
+    : `「${conflict.names[0]}」目前是 ${conflict.actualType || "未知"} 欄位，必須改為 ${conflict.expectedType}`;
+}
+
 /**
- * Makes the configured data source usable for analysis. Prefers GET of the
- * stored dataSourceId; on 404 or a missing id, calls resolveDataSource. Any
- * schemaPlan error throws before PATCH: missing 整理狀態, a non-select
- * 整理狀態, a select without 待分析, or a wrong type on AI 標題 / AI 主題 /
- * AI 暫定主題 / AI 關鍵字 / AI 摘要. Those failures block analysis. Missing
- * analysis properties other than 整理狀態 may be PATCHed in unless
- * options.mutateSchema is false (INSPECT_PAGE / popup open). If 整理狀態
- * already has 待分析, missing other status options may be PATCHed while
- * existing option ids are kept; 整理狀態 is never created or type-converted
- * here. Copies preferExistingTopics from the notionTarget UUID key onto the
- * data source key, then writeConfig with resolved ids.
+ * Reads the configured data source and resolves its column map. GET only. Prefers the stored
+ * dataSourceId; on 404 or a missing id, calls resolveDataSource. A column the map cannot place without
+ * guessing throws NOTION_FIELDS_INVALID. The saved map is used only for the data source it was made for.
  */
-async function ensureSchema(config, token, options = {}) {
+async function inspectNotionFields(config, token) {
   let resolved;
   if (config.dataSourceId) {
     try {
@@ -138,157 +139,162 @@ async function ensureSchema(config, token, options = {}) {
   }
   if (!resolved) resolved = await resolveDataSource(config, token);
 
-  const plan = N.schemaPlan(resolved.dataSource.properties ?? {});
-  if (plan.errors.length) {
-    throw new AppError(plan.setupIssue?.message || `${plan.errors.join("；")}。請在 Notion 修正上述欄位後再試。`, {
-      code: plan.setupIssue?.code || "NOTION_FIELDS_INVALID"
+  const saved = compactNotionId(config.columnMap?.dataSourceId) === compactNotionId(resolved.dataSourceId)
+    ? config.columnMap
+    : null;
+  const plan = N.resolveColumnMap(resolved.dataSource.properties ?? {}, saved, config.uiLanguage);
+  if (plan.conflicts.length) {
+    throw new AppError(`${plan.conflicts.map(fieldConflictMessage).join("；")}。請在 Notion 修正後再試。`, {
+      code: "NOTION_FIELDS_INVALID"
     });
   }
-  let dataSource = resolved.dataSource;
-  if (plan.changed && options.mutateSchema !== false) {
-    dataSource = await notionRequest(`/v1/data_sources/${resolved.dataSourceId}`, {
-      method: "PATCH",
-      body: { properties: plan.properties },
-      token
-    });
-  }
+  plan.map.dataSourceId = resolved.dataSourceId;
+  return { ...resolved, plan, prepared: Object.keys(plan.missing).length === 0 };
+}
+
+/**
+ * Persists the resolved ids and the column map (null until every column and status option exists).
+ * Copies preferExistingTopics from the notionTarget UUID key onto the data source key.
+ */
+async function saveNotionTarget(config, inspected) {
   const preferences = normalizeTopicOrganizerPreferences(config.preferExistingTopicsByDataSource);
   const targetKey = compactNotionId(S.extractNotionId(config.notionTarget));
-  const dataSourceKey = compactNotionId(resolved.dataSourceId);
+  const dataSourceKey = compactNotionId(inspected.dataSourceId);
   if (dataSourceKey && targetKey && Object.hasOwn(preferences, targetKey)) {
     preferences[dataSourceKey] = preferences[targetKey];
   }
   const nextConfig = {
     ...config,
-    dataSourceId: resolved.dataSourceId,
-    databaseId: resolved.databaseId || config.databaseId,
+    dataSourceId: inspected.dataSourceId,
+    databaseId: inspected.databaseId || config.databaseId,
+    columnMap: inspected.prepared ? inspected.plan.map : null,
     preferExistingTopicsByDataSource: preferences
   };
   await writeConfig(nextConfig);
-  return { config: nextConfig, dataSource, plan };
+  return nextConfig;
+}
+
+async function recordFieldsCheck(error) {
+  if (!["NOTION_FIELDS_MISSING", "NOTION_FIELDS_INVALID"].includes(error.code)) return;
+  stateCache.databaseCheck = {
+    checkedAt: new Date().toISOString(),
+    code: error.code,
+    message: error.message,
+    ready: false
+  };
+  stateCache.lastError = error.message;
+  await persistState();
 }
 
 /**
- * Explicit, user-approved preparation for 整理狀態. Resolves the configured
- * data source, then PATCHes only that property according to
- * statusFieldSetupPlan. Existing Select options are preserved; a same-name
- * non-Select field is rejected. This action does not create other analysis
- * properties or write article pages.
+ * Shared gate for scans, queue start, organizer, page inspection, and connection tests. Requires a
+ * Notion token, reads the data source, and returns a bindColumns() instance for it. Never changes the
+ * schema: absent columns or status options throw NOTION_FIELDS_MISSING, and only prepareNotionFields
+ * (which the user confirms from a preview) creates them. Either field error is recorded in
+ * databaseCheck so the popup can point at the setup step.
  */
-async function prepareNotionStatusField() {
-  const token = await requireNotionToken();
-  const config = await readConfig();
-  let resolved;
-  if (config.dataSourceId) {
-    try {
-      const dataSource = await notionRequest(`/v1/data_sources/${config.dataSourceId}`, { token });
-      resolved = { dataSource, dataSourceId: dataSource.id, databaseId: config.databaseId };
-    } catch (error) {
-      if (error.status !== 404) throw error;
-    }
-  }
-  if (!resolved) resolved = await resolveDataSource(config, token);
-
-  const plan = N.statusFieldSetupPlan(resolved.dataSource.properties ?? {});
-  if (plan.errors.length) {
-    throw new AppError(plan.setupIssue?.message || plan.errors.join("；"), {
-      code: plan.setupIssue?.code || "NOTION_STATUS_FIELD_INVALID"
-    });
-  }
-  if (plan.changed) {
-    await notionRequest(`/v1/data_sources/${resolved.dataSourceId}`, {
-      method: "PATCH",
-      body: { properties: plan.properties },
-      token
-    });
-  }
-
-  const nextConfig = {
-    ...config,
-    dataSourceId: resolved.dataSourceId,
-    databaseId: resolved.databaseId || config.databaseId
-  };
-  await writeConfig(nextConfig);
-  preparedDataSourceId = compactNotionId(resolved.dataSourceId);
-  if (["NOTION_STATUS_FIELD_MISSING", "NOTION_PENDING_OPTION_MISSING"].includes(stateCache.databaseCheck?.code)) {
-    stateCache.databaseCheck = null;
-    stateCache.lastError = "";
-    await persistState();
-  }
-  return {
-    addedOptions: plan.addedOptions,
-    changed: plan.changed,
-    created: plan.created,
-    dataSourceId: resolved.dataSourceId
-  };
-}
-
-/**
- * Shared credentials/config/schema gate for scans, queue start, organizer
- * apply, page inspection, and connection tests. Requires a Notion token,
- * reads config, then ensureSchema. Default mutateSchema is true (may PATCH
- * missing schema and persists resolved ids). Pass { mutateSchema: false }
- * for INSPECT_PAGE / popup open: GET and persist ids only, no schema PATCH,
- * and do not mark preparedDataSourceId so later analysis can still repair.
- * On NOTION_STATUS_FIELD_MISSING, NOTION_STATUS_FIELD_TYPE, or
- * NOTION_PENDING_OPTION_MISSING, records databaseCheck before rethrowing so
- * the UI can show the 整理狀態 setup failure. Other setup errors propagate
- * without that write.
- */
-async function readyNotion(options = {}) {
+async function readyNotion() {
   const token = await requireNotionToken();
   const config = await readConfig();
   try {
-    const ready = await ensureSchema(config, token, options);
-    if (options.mutateSchema !== false) {
-      preparedDataSourceId = compactNotionId(ready.config.dataSourceId);
-    }
-    return { ...ready, token };
+    const inspected = await inspectNotionFields(config, token);
+    const nextConfig = await saveNotionTarget(config, inspected);
+    if (!inspected.prepared) throw new AppError(FIELDS_NOT_READY_MESSAGE, { code: "NOTION_FIELDS_MISSING" });
+    preparedDataSourceId = compactNotionId(nextConfig.dataSourceId);
+    return { config: nextConfig, dataSource: inspected.dataSource, fields: N.bindColumns(inspected.plan.map), token };
   } catch (error) {
-    if (["NOTION_STATUS_FIELD_MISSING", "NOTION_STATUS_FIELD_TYPE", "NOTION_PENDING_OPTION_MISSING"].includes(error.code)) {
-      stateCache.databaseCheck = {
-        checkedAt: new Date().toISOString(),
-        code: error.code,
-        message: error.message,
-        ready: false
-      };
-      stateCache.lastError = error.message;
-      await persistState();
-    }
+    await recordFieldsCheck(error);
     throw error;
   }
 }
 
-async function readTopicOptions(config, token, signal) {
-  if (!config.dataSourceId) {
-    throw new AppError("尚未完成 Notion Data Source 設定", { code: "NOTION_TARGET_MISSING" });
-  }
-  const dataSource = await notionRequest(`/v1/data_sources/${config.dataSourceId}`, { signal, token });
-  return N.topicOptions(dataSource.properties ?? {});
+// What prepareNotionFields would create, for the confirmation dialog. GET only.
+async function previewNotionFields() {
+  const inspected = await inspectNotionFields(await readConfig(), await requireNotionToken());
+  return {
+    addedColumns: inspected.plan.added.map(column => ({ name: column.name, type: column.type })),
+    addedOptions: inspected.plan.addedOptions,
+    dataSourceId: inspected.dataSourceId,
+    language: inspected.plan.map.language,
+    title: N.dataSourceSummary(inspected.dataSource)?.title || ""
+  };
 }
 
-async function queryPagesByStatus(dataSourceId, status, token, options = {}) {
+/**
+ * The only place Siftly columns and status options are created. Runs after the user confirms the
+ * preview. PATCHes exactly what is absent, then reads the data source back: the saved map needs the
+ * ids Notion assigned, and a retry after a partial update finds what already exists instead of adding
+ * it twice. Writes no article page.
+ */
+async function prepareNotionFields() {
+  assertIdle();
+  const token = await requireNotionToken();
+  const config = await readConfig();
+  let inspected = await inspectNotionFields(config, token);
+  const created = {
+    addedColumns: inspected.plan.added.map(column => column.name),
+    addedOptions: inspected.plan.addedOptions
+  };
+  if (!inspected.prepared) {
+    await notionRequest(`/v1/data_sources/${inspected.dataSourceId}`, {
+      method: "PATCH",
+      body: { properties: inspected.plan.missing },
+      token
+    });
+    inspected = await inspectNotionFields(
+      { ...config, dataSourceId: inspected.dataSourceId, columnMap: inspected.plan.map },
+      token
+    );
+    if (!inspected.prepared) {
+      throw new AppError("Notion 欄位尚未建立完成，請再試一次", { code: "NOTION_FIELDS_MISSING" });
+    }
+  }
+  await saveNotionTarget(config, inspected);
+  preparedDataSourceId = compactNotionId(inspected.dataSourceId);
+  if (stateCache.databaseCheck?.ready === false) {
+    stateCache.databaseCheck = null;
+    stateCache.lastError = "";
+    await persistState();
+  }
+  return { ...created, dataSourceId: inspected.dataSourceId };
+}
+
+// The bound operations for the saved data source, for steps that follow a readyNotion() in an earlier call.
+function fieldsFor(config) {
+  if (!config.columnMap || compactNotionId(config.columnMap.dataSourceId) !== compactNotionId(config.dataSourceId)) {
+    throw new AppError(FIELDS_NOT_READY_MESSAGE, { code: "NOTION_FIELDS_MISSING" });
+  }
+  return N.bindColumns(config.columnMap);
+}
+
+async function readTopicOptions(config, token, signal) {
+  const fields = fieldsFor(config);
+  const dataSource = await notionRequest(`/v1/data_sources/${fields.dataSourceId}`, { signal, token });
+  return fields.topicOptions(dataSource.properties ?? {});
+}
+
+async function queryPagesByStatus(fields, status, token, options = {}) {
   const pages = [];
   const maxPages = Math.max(1, Number(options.maxPages) || MAX_PENDING_PAGES);
   let cursor = "";
   do {
     const remaining = maxPages - pages.length;
     if (remaining <= 0) break;
-    const response = await notionRequest(`/v1/data_sources/${dataSourceId}/query`, {
+    const response = await notionRequest(`/v1/data_sources/${fields.dataSourceId}/query`, {
       method: "POST",
-      body: N.queryPayload(status, cursor, Math.min(100, remaining)),
+      body: fields.queryPayload(status, cursor, Math.min(100, remaining)),
       signal: options.signal,
       token
     });
     pages.push(...(response.results ?? []).map(page => ({
       ...N.pageSummary(page),
-      sourceDataSourceId: dataSourceId,
+      sourceDataSourceId: fields.dataSourceId,
       sourceStatus: status
     })));
     if (typeof options.onProgress === "function") await options.onProgress(pages.length, status);
     if (pages.length >= maxPages && response.has_more) {
       if (options.failOnLimit) {
-        throw new AppError(`「${status}」頁面超過 ${maxPages} 筆掃描上限，請先縮小待處理範圍`, {
+        throw new AppError(`「${N.STATUS_NAMES[status]}」頁面超過 ${maxPages} 筆掃描上限，請先縮小待處理範圍`, {
           code: "PAGE_SCAN_LIMIT_EXCEEDED",
           diagnostic: { maxPages, status }
         });
@@ -300,10 +306,10 @@ async function queryPagesByStatus(dataSourceId, status, token, options = {}) {
   return pages;
 }
 
-async function hasPageByStatus(dataSourceId, status, token) {
-  const response = await notionRequest(`/v1/data_sources/${dataSourceId}/query`, {
+async function hasPageByStatus(fields, status, token) {
+  const response = await notionRequest(`/v1/data_sources/${fields.dataSourceId}/query`, {
     method: "POST",
-    body: { ...N.queryPayload(status), page_size: 1 },
+    body: { ...fields.queryPayload(status), page_size: 1 },
     token
   });
   return Boolean(response.results?.length);
@@ -442,7 +448,8 @@ function buildNextConfig(settings, current, resolved) {
     discardedTopicNames: targetChanged ? [] : normalizeDiscardedTopicNames(current.discardedTopicNames),
     topicDictionary: targetChanged ? [] : normalizeTopicDictionary(current.topicDictionary),
     dataSourceId: targetChanged ? "" : current.dataSourceId,
-    databaseId: targetChanged ? "" : current.databaseId
+    databaseId: targetChanged ? "" : current.databaseId,
+    columnMap: targetChanged ? null : current.columnMap
   };
   delete next.autoSelectHighConfidence;
   return next;
@@ -507,8 +514,7 @@ function buildSaveResponse(next, resolved) {
  * discardedTopicNames, and topicDictionary so another database cannot reuse
  * that taxonomy or queue; then resetStateForDatabaseChange. Topic
  * preferences stay keyed per data source / target UUID and are not wiped.
- * Does not call Notion or ensureSchema; schema is checked later by
- * readyNotion. Response includes has*Key booleans, not secret values.
+ * Does not call Notion; the schema is checked later by readyNotion. Response includes has*Key booleans, not secret values.
  */
 async function saveSettings(settings) {
   assertArticleSelectionIdle();
@@ -581,15 +587,13 @@ async function getConfigForUi() {
 }
 
 /**
- * Options connection test. Goes through readyNotion, so it may PATCH missing
- * data-source schema and persist resolved ids; not read-only. Then contacts
- * only the configured AI provider: Vertex countTokens on the selected model
- * or the Gemini model list. Queries whether any 待分析 page exists. No article
- * property writes. Missing pending pages set databaseCheck NO_PENDING_PAGES
- * with ready true and do not throw. Returns plan.added / plan.updated names.
+ * Options connection test. Goes through readyNotion (read-only; persists resolved ids), then contacts
+ * only the configured AI provider: Vertex countTokens on the selected model or the Gemini model list.
+ * Queries whether any pending page exists. No article property writes. Missing pending pages set
+ * databaseCheck NO_PENDING_PAGES with ready true and do not throw.
  */
 async function testConnections() {
-  const { config, dataSource, plan, token } = await readyNotion();
+  const { config, dataSource, fields, token } = await readyNotion();
   const provider = normalizeAiProvider(config.aiProvider);
   let models = [];
   let selectedAvailable = false;
@@ -602,26 +606,24 @@ async function testConnections() {
     models = await listGeminiModels(apiKey);
     selectedAvailable = models.some(model => model.name === config.geminiModel);
   }
-  const allTopicOptions = N.topicOptions(dataSource.properties ?? {});
+  const allTopicOptions = fields.topicOptions(dataSource.properties ?? {});
   const usableTopicOptions = validTopicOptions(allTopicOptions);
-  const hasPending = await hasPageByStatus(config.dataSourceId, N.STATUS.pending, token);
+  const hasPending = await hasPageByStatus(fields, N.STATUS.pending, token);
   stateCache.databaseCheck = {
     checkedAt: new Date().toISOString(),
     code: hasPending ? "READY" : "NO_PENDING_PAGES",
-    message: hasPending ? "" : N.DATABASE_SETUP_MESSAGES.noPendingPages,
+    message: hasPending ? "" : NO_PENDING_PAGES_MESSAGE,
     ready: true
   };
-  stateCache.lastError = hasPending ? "" : N.DATABASE_SETUP_MESSAGES.noPendingPages;
+  stateCache.lastError = hasPending ? "" : NO_PENDING_PAGES_MESSAGE;
   await persistState();
   return {
-    addedProperties: plan.added,
     dataSourceId: config.dataSourceId,
     modelCount: models.length,
     provider,
     selectedAvailable,
     ignoredTopicCount: allTopicOptions.length - usableTopicOptions.length,
     hasPending,
-    topicCount: usableTopicOptions.length,
-    updatedProperties: plan.updated
+    topicCount: usableTopicOptions.length
   };
 }

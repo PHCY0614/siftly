@@ -13,6 +13,7 @@ const EXTENSION_ID = "siftly-output-language-test";
 const S = require(path.join(root, "shared.js"));
 const P = require(path.join(root, "prompt.js"));
 const G = require(path.join(root, "gemini.js"));
+const N = require(path.join(root, "notion.js"));
 
 function source(name) {
   return fs.readFileSync(path.join(root, name), "utf8");
@@ -356,12 +357,14 @@ async function testTopicSnapshotsKeepTheirLanguageAfterConfigSwitch() {
   const config = {
     outputLanguage: "zh-TW",
     dataSourceId: "data-source-1",
+    columnMap: { ...N.defaultColumnMap(), dataSourceId: "data-source-1" },
     notionTarget: "",
     topicDictionary: [],
     discardedTopicNames: [],
     topicPageResolutions: []
   };
-  context.readyNotion = async () => ({ config, token: "notion-test-token" });
+  context.readyNotion = async () => ({ config, fields: N.bindColumns(config.columnMap), token: "notion-test-token" });
+  context.fieldsFor = () => N.bindColumns(config.columnMap);
   context.requireNotionToken = async () => "notion-test-token";
   context.readTopicOptions = async () => topicOptions;
   context.writeConfig = async () => {};

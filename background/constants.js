@@ -51,9 +51,7 @@ const SETUP_ERROR_CODES = new Set([
   "MODEL_NOT_FOUND",
   "SCHEMA_INVALID",
   "NOTION_FIELDS_INVALID",
-  "NOTION_STATUS_FIELD_MISSING",
-  "NOTION_STATUS_FIELD_TYPE",
-  "NOTION_PENDING_OPTION_MISSING",
+  "NOTION_FIELDS_MISSING",
   "NOTION_AUTH",
   "NOTION_TOKEN_MISSING",
   "TOPIC_OPTIONS_EMPTY"
@@ -80,7 +78,11 @@ const DEFAULT_CONFIG = Object.freeze({
   preferExistingTopicsByDataSource: {},
   topicAliases: {},
   topicPageResolutions: {},
-  topicDictionary: []
+  topicDictionary: [],
+  // The Notion column map of the active data source (see notion.js); null until its fields are prepared.
+  columnMap: null,
+  // Decides the names of columns and status options created in a data source that has none yet.
+  uiLanguage: "zh"
 });
 
 const DEFAULT_STATE = Object.freeze({
@@ -113,6 +115,8 @@ class AppError extends Error {
     this.retryAfter = options.retryAfter || 0;
   }
 }
+
+const NO_PENDING_PAGES_MESSAGE = "目前沒有待分析文章。可在設定頁使用「準備待分析文章」批次選取，或在 Notion 將文章的整理狀態設為待分析。";
 
 // ==== Shared guards ====
 // One wording per condition, so every workflow reports it the same way.

@@ -114,24 +114,12 @@ function topicOrganizerPreference(config = {}) {
   return Boolean(targetKey && preferences[targetKey]);
 }
 
-function legacyCandidate(result = {}) {
-  const name = S.cleanText(result.topic_candidate);
-  if (!name) return [];
-  return [{
-    name,
-    reason: S.cleanText(result.topic_candidate_reason),
-    closest_existing: Array.isArray(result.topic_closest_existing)
-      ? result.topic_closest_existing.map(S.cleanText).filter(Boolean)
-      : []
-  }];
-}
-
 function normalizeTopicReview(review) {
   if (!review || typeof review !== "object") return null;
   const result = review.result && typeof review.result === "object" ? review.result : {};
   const remainingCandidates = Array.isArray(review.remainingCandidates)
     ? review.remainingCandidates
-    : Array.isArray(result.topic_candidates) ? result.topic_candidates : legacyCandidate(result);
+    : [];
   const outputLanguage = topicSessionLanguage({ ...review, remainingCandidates });
   return {
     ...review,

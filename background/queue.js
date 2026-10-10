@@ -25,9 +25,10 @@ async function scanPending() {
   }
   await setStage("掃描 Notion", { progress: 0 });
   let config;
+  let fields;
   let token;
   try {
-    ({ config, token } = await readyNotion());
+    ({ config, fields, token } = await readyNotion());
   } catch (error) {
     stateCache.stage = null;
     await persistState();
@@ -45,13 +46,13 @@ async function scanPending() {
   };
   const [pages, remoteFailed] = await withAbortTimeout(
     signal => Promise.all([
-      queryPagesByStatus(config.dataSourceId, N.STATUS.pending, token, {
+      queryPagesByStatus(fields, N.STATUS.pending, token, {
         signal,
         onProgress,
         maxPages: MAX_PENDING_PAGES,
         failOnLimit: true
       }),
-      queryPagesByStatus(config.dataSourceId, N.STATUS.failed, token, {
+      queryPagesByStatus(fields, N.STATUS.failed, token, {
         signal,
         onProgress,
         maxPages: MAX_FAILED_PAGES_TO_LOAD
@@ -103,10 +104,10 @@ async function scanPending() {
   stateCache.databaseCheck = {
     checkedAt: stateCache.lastScanAt,
     code: noPending ? "NO_PENDING_PAGES" : "READY",
-    message: noPending ? N.DATABASE_SETUP_MESSAGES.noPendingPages : "",
+    message: noPending ? NO_PENDING_PAGES_MESSAGE : "",
     ready: true
   };
-  stateCache.lastError = noPending ? N.DATABASE_SETUP_MESSAGES.noPendingPages : "";
+  stateCache.lastError = noPending ? NO_PENDING_PAGES_MESSAGE : "";
   stateCache.stage = null;
   await persistState();
   return pages;
@@ -207,9 +208,10 @@ function isAbort(error) {
 async function resetPageToPending(item, token) {
   if (!token) return;
   try {
+    const fields = fieldsFor(await readConfig());
     await notionRequest(`/v1/pages/${item.id}`, {
       method: "PATCH",
-      body: N.statusUpdatePayload(N.STATUS.pending),
+      body: fields.statusUpdatePayload(N.STATUS.pending),
       retrySafe: true,
       token
     });
@@ -229,9 +231,10 @@ async function recordFailure(item, error, token) {
   let statusError = "";
   if (token) {
     try {
+      const fields = fieldsFor(await readConfig());
       await notionRequest(`/v1/pages/${item.id}`, {
         method: "PATCH",
-        body: N.statusUpdatePayload(N.STATUS.failed),
+        body: fields.statusUpdatePayload(N.STATUS.failed),
         retrySafe: true,
         token
       });
@@ -289,10 +292,9 @@ async function processItem(item) {
     let config = await readConfig();
     token = await requireNotionToken();
     if (!config.dataSourceId || preparedDataSourceId !== compactNotionId(config.dataSourceId)) {
-      const ready = await ensureSchema(config, token);
-      config = ready.config;
-      preparedDataSourceId = compactNotionId(config.dataSourceId);
+      config = (await readyNotion()).config;
     }
+    const fields = fieldsFor(config);
     const expectedSourceId = compactNotionId(config.dataSourceId);
     const queuedSourceId = compactNotionId(item.sourceDataSourceId);
     if (queuedSourceId && queuedSourceId !== expectedSourceId) {
@@ -317,7 +319,7 @@ async function processItem(item) {
     await setStage("準備頁面", { pageId: item.id });
     await notionRequest(`/v1/pages/${item.id}`, {
       method: "PATCH",
-      body: N.statusUpdatePayload(N.STATUS.processing),
+      body: fields.statusUpdatePayload(N.STATUS.processing),
       signal: controller.signal,
       token
     });
@@ -358,7 +360,7 @@ async function processItem(item) {
       : [];
     await notionWriteWithTimeout(`/v1/pages/${item.id}`, {
       method: "PATCH",
-      body: N.analysisDraftPayload(result, draftStatus, isSingleReview),
+      body: fields.analysisDraftPayload(result, draftStatus, isSingleReview),
       token
     }, controller.signal);
 
@@ -496,10 +498,10 @@ async function queueAll() {
     stateCache.databaseCheck = {
       checkedAt: new Date().toISOString(),
       code: "NO_PENDING_PAGES",
-      message: N.DATABASE_SETUP_MESSAGES.noPendingPages,
+      message: NO_PENDING_PAGES_MESSAGE,
       ready: true
     };
-    stateCache.lastError = N.DATABASE_SETUP_MESSAGES.noPendingPages;
+    stateCache.lastError = NO_PENDING_PAGES_MESSAGE;
     stateCache.mode = "idle";
     stateCache.paused = true;
     stateCache.stopRequested = false;
@@ -563,8 +565,8 @@ async function resumeAnalysis() {
 async function retryFailed() {
   assertArticleSelectionIdle();
   ensureNoTopicReview();
-  const { config, token } = await readyNotion();
-  const remoteFailed = await queryPagesByStatus(config.dataSourceId, N.STATUS.failed, token, {
+  const { fields, token } = await readyNotion();
+  const remoteFailed = await queryPagesByStatus(fields, N.STATUS.failed, token, {
     maxPages: MAX_FAILED_PAGES_TO_LOAD
   });
   assertArticleSelectionIdle();

@@ -1,3 +1,11 @@
+/**
+ * Notion payload layer: the six Siftly columns and the workflow status options (a fixed key plus a
+ * Chinese and an English name each), the column map that ties every key to a data source's own
+ * property and option ids, and the request bodies and page readers built from that map.
+ *
+ * Does no network or storage work and remembers nothing between calls. background/settings.js reads
+ * the data source, saves the map, and hands each workflow a bindColumns() instance for that data source.
+ */
 (function attachAnalyzerNotion(root, factory) {
   const shared = typeof module === "object" && module.exports
     ? require("./shared.js")
@@ -11,48 +19,40 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function createAnalyzerNotion(shared) {
   "use strict";
 
+  // ---- Columns and status options ----
+
   const API_VERSION = "2026-03-11";
   const MAX_STORED_PAGE_TITLE_CHARACTERS = 500;
-  const PROPERTY_NAMES = Object.freeze({
-    aiTitle: "AI 標題",
-    aiTopics: "AI 主題",
-    provisionalTopics: "AI 暫定主題",
-    aiKeywords: "AI 關鍵字",
-    aiSummary: "AI 摘要",
-    processingStatus: "整理狀態"
+
+  // AI 暫定主題 is provisional analysis output; AI 主題 is the confirmed taxonomy. They stay separate columns.
+  const COLUMNS = Object.freeze({
+    aiTitle: { type: "rich_text", names: { zh: "AI 標題", en: "AI Title" } },
+    aiTopics: { type: "multi_select", names: { zh: "AI 主題", en: "AI Topics" } },
+    provisionalTopics: { type: "rich_text", names: { zh: "AI 暫定主題", en: "AI Provisional Topics" } },
+    aiKeywords: { type: "rich_text", names: { zh: "AI 關鍵字", en: "AI Keywords" } },
+    aiSummary: { type: "rich_text", names: { zh: "AI 摘要", en: "AI Summary" } },
+    processingStatus: { type: "select", names: { zh: "整理狀態", en: "Processing Status" } }
   });
-  const STATUS = Object.freeze({
-    pending: "待分析",
-    processing: "分析中",
-    topicOrganize: "待主題整理",
-    topicReview: "待主題確認",
-    analyzed: "已分析",
-    failed: "分析失敗",
-    skipped: "不分析"
+  const STATUS_OPTIONS = Object.freeze({
+    pending: { names: { zh: "待分析", en: "Pending" }, color: "yellow" },
+    processing: { names: { zh: "分析中", en: "Analyzing" }, color: "blue" },
+    topicOrganize: { names: { zh: "待主題整理", en: "Topics to organize" }, color: "orange" },
+    topicReview: { names: { zh: "待主題確認", en: "Topics to confirm" }, color: "orange" },
+    analyzed: { names: { zh: "已分析", en: "Analyzed" }, color: "green" },
+    failed: { names: { zh: "分析失敗", en: "Failed" }, color: "red" },
+    skipped: { names: { zh: "不分析", en: "Skipped" }, color: "gray" }
   });
-  const STATUS_OPTIONS = Object.freeze([
-    { name: STATUS.pending, color: "yellow" },
-    { name: STATUS.processing, color: "blue" },
-    { name: STATUS.topicOrganize, color: "orange" },
-    { name: STATUS.topicReview, color: "orange" },
-    { name: STATUS.analyzed, color: "green" },
-    { name: STATUS.failed, color: "red" },
-    { name: STATUS.skipped, color: "gray" }
-  ]);
-  const DATABASE_SETUP_MESSAGES = Object.freeze({
-    statusFieldMissing: "找不到「整理狀態」欄位。請在 Notion 資料庫新增一個名為「整理狀態」的選取欄位，並加入「待分析」選項。",
-    statusFieldType: "「整理狀態」欄位類型不正確。請將它設定為 Select，並加入「待分析」選項。",
-    pendingOptionMissing: "「整理狀態」尚未加入「待分析」選項。請先在 Notion 加入「待分析」，再將想分析的文章設為「待分析」。",
-    noPendingPages: "目前沒有待分析文章。可在設定頁使用「準備待分析文章」批次選取，或在 Notion 將文章的「整理狀態」設為「待分析」。"
-  });
-  const EXPECTED_TYPES = Object.freeze({
-    [PROPERTY_NAMES.aiTitle]: "rich_text",
-    [PROPERTY_NAMES.aiTopics]: "multi_select",
-    [PROPERTY_NAMES.provisionalTopics]: "rich_text",
-    [PROPERTY_NAMES.aiKeywords]: "rich_text",
-    [PROPERTY_NAMES.aiSummary]: "rich_text",
-    [PROPERTY_NAMES.processingStatus]: "select"
-  });
+  // The rest of the extension names a status by its key; only a bound instance knows the option's name.
+  const STATUS = Object.freeze(Object.fromEntries(Object.keys(STATUS_OPTIONS).map(key => [key, key])));
+  const PROPERTY_NAMES = Object.freeze(Object.fromEntries(
+    Object.entries(COLUMNS).map(([key, column]) => [key, column.names.zh])
+  ));
+  const STATUS_NAMES = Object.freeze(Object.fromEntries(
+    Object.entries(STATUS_OPTIONS).map(([key, option]) => [key, option.names.zh])
+  ));
+  // Columns that hold AI output. Any value in one of them marks the article as already handled.
+  const AI_VALUE_KEYS = Object.freeze(["aiTitle", "aiSummary", "provisionalTopics", "aiKeywords", "aiTopics"]);
+
   const TOPIC_COLOR_RULES = Object.freeze([
     { color: "red", terms: ["戰爭", "軍事衝突", "武裝衝突", "犯罪", "災難", "暴力"] },
     { color: "brown", terms: ["環境", "生態環境", "農業", "土地", "自然資源", "氣候", "能源"] },
@@ -65,105 +65,13 @@
     { color: "blue", terms: ["神祕學", "生物學", "歷史", "社會變遷", "飲食文化", "古董", "文化", "教育", "科學", "學術"] }
   ]);
 
-  function analysisPropertySchema() {
-    return {
-      [PROPERTY_NAMES.aiTitle]: { rich_text: {} },
-      [PROPERTY_NAMES.aiTopics]: { multi_select: { options: [] } },
-      [PROPERTY_NAMES.provisionalTopics]: { rich_text: {} },
-      [PROPERTY_NAMES.aiKeywords]: { rich_text: {} },
-      [PROPERTY_NAMES.aiSummary]: { rich_text: {} },
-      [PROPERTY_NAMES.processingStatus]: { select: { options: STATUS_OPTIONS.map(option => ({ ...option })) } }
-    };
-  }
+  // ---- Values shared by every data source ----
 
   function propertyType(property) {
     if (!property || typeof property !== "object") return "";
     if (property.type) return property.type;
     return ["title", "rich_text", "multi_select", "select", "status", "date", "url", "number", "checkbox"]
       .find(type => Object.prototype.hasOwnProperty.call(property, type)) || "";
-  }
-
-  /**
-   * This module is the only payload layer that binds Chinese Notion property
-   * names, expected types, and 整理狀態 values. Builds a data-source schema
-   * PATCH plan. Conservative: never creates or type-converts 整理狀態; a
-   * missing, non-select, or 待分析-less 整理狀態 is an error for
-   * ensureSchema(). Missing AI 標題 / AI 主題 / AI 暫定主題 / AI 關鍵字 /
-   * AI 摘要 may be added. If 整理狀態 already has 待分析, missing other
-   * status options may be listed while existing option ids are kept. Wrong
-   * types on other properties are errors, not conversions.
-   */
-  function schemaPlan(existingProperties = {}) {
-    const required = analysisPropertySchema();
-    const properties = {};
-    const added = [];
-    const updated = [];
-    const errors = [];
-
-    let setupIssue = null;
-    const statusProperty = existingProperties[PROPERTY_NAMES.processingStatus];
-    if (!statusProperty) {
-      setupIssue = { code: "NOTION_STATUS_FIELD_MISSING", message: DATABASE_SETUP_MESSAGES.statusFieldMissing };
-    } else if (propertyType(statusProperty) !== "select") {
-      setupIssue = { code: "NOTION_STATUS_FIELD_TYPE", message: DATABASE_SETUP_MESSAGES.statusFieldType };
-    } else {
-      const statusNames = new Set((statusProperty.select?.options ?? []).map(option => option?.name).filter(Boolean));
-      if (!statusNames.has(STATUS.pending)) {
-        setupIssue = { code: "NOTION_PENDING_OPTION_MISSING", message: DATABASE_SETUP_MESSAGES.pendingOptionMissing };
-      }
-    }
-
-    for (const [name, expectedType] of Object.entries(EXPECTED_TYPES)) {
-      const existing = existingProperties[name];
-      if (!existing) {
-        if (name === PROPERTY_NAMES.processingStatus) {
-          errors.push(setupIssue.message);
-        } else {
-          properties[name] = required[name];
-          added.push(name);
-        }
-        continue;
-      }
-      const actualType = propertyType(existing);
-      if (actualType !== expectedType) {
-        errors.push(name === PROPERTY_NAMES.processingStatus
-          ? setupIssue.message
-          : `「${name}」目前是 ${actualType || "未知"} 欄位，必須改為 ${expectedType}`);
-      }
-    }
-
-    if (statusProperty && propertyType(statusProperty) === "select") {
-      const existingOptions = Array.isArray(statusProperty.select?.options)
-        ? statusProperty.select.options.filter(option => option?.name)
-        : [];
-      const existingNames = new Set(existingOptions.map(option => option?.name).filter(Boolean));
-      if (!existingNames.has(STATUS.pending)) {
-        errors.push(setupIssue.message);
-      }
-      const missing = STATUS_OPTIONS.filter(option => !existingNames.has(option.name));
-      if (missing.length && existingNames.has(STATUS.pending)) {
-        properties[PROPERTY_NAMES.processingStatus] = {
-          select: {
-            options: [
-              ...existingOptions.map(option => option.id
-                ? { id: option.id }
-                : { name: option.name }),
-              ...missing.map(option => ({ ...option }))
-            ]
-          }
-        };
-        updated.push(PROPERTY_NAMES.processingStatus);
-      }
-    }
-
-    return {
-      added,
-      changed: Object.keys(properties).length > 0,
-      errors,
-      properties,
-      setupIssue,
-      updated
-    };
   }
 
   function richText(content) {
@@ -180,67 +88,12 @@
     return shared.cleanText(value).normalize("NFKC").toLocaleLowerCase("zh-Hant-TW");
   }
 
-  function topicOptions(properties = {}) {
-    const property = properties?.[PROPERTY_NAMES.aiTopics];
-    const options = Array.isArray(property?.multi_select?.options)
-      ? property.multi_select.options
-      : [];
-    const seen = new Set();
-    return options.reduce((result, option) => {
-      const name = shared.cleanText(option?.name);
-      const key = topicKey(name);
-      if (!name || !key || seen.has(key)) return result;
-      seen.add(key);
-      result.push({
-        id: String(option?.id ?? ""),
-        name,
-        color: shared.cleanText(option?.color) || "default"
-      });
-      return result;
-    }, []);
-  }
-
   function topicColor(value) {
     const name = shared.cleanText(value).normalize("NFKC");
     for (const rule of TOPIC_COLOR_RULES) {
       if (rule.terms.some(term => name.includes(term))) return rule.color;
     }
     return "default";
-  }
-
-  /**
-   * Data-source schema PATCH for the AI 主題 multi_select option list.
-   * Preserves existing options by id (or name if id is absent). Deduplicates new
-   * topic names against existing options and earlier additions by topicKey.
-   * Does not write page properties, 整理狀態, or AI 暫定主題. Page helpers
-   * do not call this.
-   */
-  function topicOptionsUpdatePayload(existingOptions = [], newTopics = []) {
-    const existingKeys = new Set(
-      (existingOptions ?? []).map(option => topicKey(option?.name)).filter(Boolean)
-    );
-    const additions = [];
-    for (const value of newTopics ?? []) {
-      const name = shared.cleanText(value).slice(0, 100);
-      const key = topicKey(name);
-      if (!name || !key || existingKeys.has(key)) continue;
-      existingKeys.add(key);
-      additions.push({ name, color: topicColor(name) });
-    }
-    return {
-      properties: {
-        [PROPERTY_NAMES.aiTopics]: {
-          multi_select: {
-            options: [
-              ...(existingOptions ?? []).filter(option => option?.name).map(option => option.id
-                ? { id: option.id }
-                : { name: shared.cleanText(option.name), color: option.color || "default" }),
-              ...additions
-            ]
-          }
-        }
-      }
-    };
   }
 
   function topicMultiSelect(values, existingOptions = [], allowedNewTopics = []) {
@@ -275,70 +128,6 @@
     }, []);
   }
 
-  /**
-   * Page PATCH after AI analysis. Writes AI 標題, AI 關鍵字, AI 摘要, and
-   * AI 暫定主題 (result.ai_topics joined by ｜ — not confirmed AI 主題) plus
-   * 整理狀態. Batch analysis passes clearFinalTopics false so confirmed
-   * AI 主題 is omitted and left unchanged. Single-page reanalysis passes true
-   * so AI 主題 is written as an empty multi_select, invalidating previous
-   * confirmed topics beside the new provisionals.
-   */
-  function analysisDraftPayload(result, status = STATUS.topicOrganize, clearFinalTopics = false) {
-    const properties = {
-      [PROPERTY_NAMES.aiTitle]: { rich_text: richText(result.ai_title) },
-      [PROPERTY_NAMES.provisionalTopics]: {
-        rich_text: richText((result.ai_topics ?? []).join("｜"))
-      },
-      [PROPERTY_NAMES.aiKeywords]: { rich_text: richText((result.ai_keywords ?? []).join("｜")) },
-      [PROPERTY_NAMES.aiSummary]: { rich_text: richText(result.ai_summary) },
-      [PROPERTY_NAMES.processingStatus]: { select: { name: status } }
-    };
-    if (clearFinalTopics) properties[PROPERTY_NAMES.aiTopics] = { multi_select: [] };
-    return { properties };
-  }
-
-  /**
-   * Reads a full inspection/review page: id, title, url, AI 標題, confirmed
-   * AI 主題, AI 暫定主題, AI 關鍵字, and 整理狀態. Used by current-page
-   * inspect and single-page topic review, which need display fields the
-   * organizer loop does not. Keeps AI 主題 and AI 暫定主題 as separate lists.
-   */
-  function pagePropertyValues(page) {
-    const properties = page?.properties ?? {};
-    const topics = properties[PROPERTY_NAMES.aiTopics]?.multi_select ?? [];
-    const status = properties[PROPERTY_NAMES.processingStatus]?.select?.name || "";
-    return {
-      id: page?.id ?? "",
-      title: pageTitle(page).slice(0, MAX_STORED_PAGE_TITLE_CHARACTERS),
-      url: String(page?.url ?? "").slice(0, 2000),
-      aiTitle: richTextPlain(properties[PROPERTY_NAMES.aiTitle]?.rich_text),
-      aiTopics: topics.map(item => shared.cleanText(item?.name)).filter(Boolean),
-      provisionalTopics: richTextPlain(properties[PROPERTY_NAMES.provisionalTopics]?.rich_text)
-        .split(/[｜\n]+/u).map(shared.cleanText).filter(Boolean),
-      keywords: richTextPlain(properties[PROPERTY_NAMES.aiKeywords]?.rich_text)
-        .split(/[｜\n]+/u).map(shared.cleanText).filter(Boolean),
-      status
-    };
-  }
-
-  /**
-   * Narrow organizer/rollback page read: id, confirmed AI 主題, AI 暫定主題,
-   * and 整理狀態 only. Omits title, url, AI 標題, and AI 關鍵字 so apply and
-   * rollback loops depend only on taxonomy and status. Separate from
-   * pagePropertyValues so those callers cannot accidentally require UI fields.
-   */
-  function topicOrganizerPageValues(page) {
-    const properties = page?.properties ?? {};
-    const topics = properties[PROPERTY_NAMES.aiTopics]?.multi_select ?? [];
-    return {
-      id: page?.id ?? "",
-      aiTopics: topics.map(item => shared.cleanText(item?.name)).filter(Boolean),
-      provisionalTopics: richTextPlain(properties[PROPERTY_NAMES.provisionalTopics]?.rich_text)
-        .split(/[｜\n]+/u).map(shared.cleanText).filter(Boolean),
-      status: properties[PROPERTY_NAMES.processingStatus]?.select?.name || ""
-    };
-  }
-
   function allPagesQueryPayload(startCursor = "", pageSize = 100) {
     const payload = {
       page_size: Math.max(1, Math.min(100, Number(pageSize) || 100)),
@@ -346,150 +135,6 @@
     };
     if (startCursor) payload.start_cursor = startCursor;
     return payload;
-  }
-
-  // Any existing AI value is protected, including partial results or whitespace.
-  function isUnanalyzedArticle(page) {
-    if (!page || page.archived || page.in_trash || page.is_archived) return false;
-    const properties = page.properties ?? {};
-    const status = properties[PROPERTY_NAMES.processingStatus];
-    if (status && ((status.type && status.type !== "select") || status.select != null)) return false;
-    for (const name of [PROPERTY_NAMES.aiTitle, PROPERTY_NAMES.aiSummary,
-      PROPERTY_NAMES.provisionalTopics, PROPERTY_NAMES.aiKeywords, PROPERTY_NAMES.aiTopics]) {
-      const property = properties[name];
-      if (!property) continue;
-      const type = EXPECTED_TYPES[name];
-      if (property.type && property.type !== type) return false;
-      if (!Array.isArray(property[type]) || property[type].length > 0) return false;
-    }
-    return true;
-  }
-
-  function unanalyzedQueryPayload(properties = {}, startCursor = "", pageSize = 10) {
-    const filters = [{ property: PROPERTY_NAMES.processingStatus, select: { is_empty: true } }];
-    for (const name of [PROPERTY_NAMES.aiTitle, PROPERTY_NAMES.aiSummary,
-      PROPERTY_NAMES.provisionalTopics, PROPERTY_NAMES.aiKeywords, PROPERTY_NAMES.aiTopics]) {
-      if (properties[name]) filters.push({ property: name, [EXPECTED_TYPES[name]]: { is_empty: true } });
-    }
-    const payload = {
-      page_size: Math.max(1, Math.min(50, Math.floor(Number(pageSize) || 10))),
-      filter: { and: filters },
-      sorts: [{ timestamp: "created_time", direction: "descending" }]
-    };
-    if (startCursor) payload.start_cursor = startCursor;
-    return payload;
-  }
-
-  /**
-   * Page PATCH that always replaces confirmed AI 主題 from `topics` and
-   * writes 整理狀態. AI 暫定主題 is replaced only when provisionalTopics is an
-   * array (including [] to clear it). A non-array (null, used by rollback
-   * when current provisionals no longer match the snapshot) omits that
-   * property so current AI 暫定主題 is left unchanged. Multi-select values
-   * prefer existing option ids, else names; this is a page write, not a
-   * data-source option-schema PATCH.
-   */
-  function topicApplyPayload(topics, status, existingTopicOptions = [], provisionalTopics = null) {
-    const properties = {
-      [PROPERTY_NAMES.aiTopics]: { multi_select: topicMultiSelect(topics, existingTopicOptions, topics) },
-      [PROPERTY_NAMES.processingStatus]: { select: { name: status } }
-    };
-    if (Array.isArray(provisionalTopics)) {
-      properties[PROPERTY_NAMES.provisionalTopics] = {
-        rich_text: richText(provisionalTopics.join("｜"))
-      };
-    }
-    return { properties };
-  }
-
-  /**
-   * Page PATCH that writes only 整理狀態. Rejects names outside STATUS.
-   * Does not touch confirmed AI 主題 or AI 暫定主題.
-   */
-  function statusUpdatePayload(status) {
-    if (!Object.values(STATUS).includes(status)) throw new Error(`未知的整理狀態：${status}`);
-    return {
-      properties: {
-        [PROPERTY_NAMES.processingStatus]: { select: { name: status } }
-      }
-    };
-  }
-
-  function queryPayload(status, startCursor = "", pageSize = 100) {
-    const payload = {
-      page_size: Math.max(1, Math.min(100, Number(pageSize) || 100)),
-      filter: {
-        property: PROPERTY_NAMES.processingStatus,
-        select: { equals: status }
-      },
-      sorts: [{ timestamp: "created_time", direction: "ascending" }]
-    };
-    if (startCursor) payload.start_cursor = startCursor;
-    return payload;
-  }
-
-  /**
-   * Builds the one-field PATCH plan used only after the user explicitly
-   * approves preparing 整理狀態. A missing field is created as Select with all
-   * workflow options. An existing Select keeps every option by id (or name)
-   * and receives only missing workflow options. A same-name non-Select field
-   * is never converted.
-   */
-  function statusFieldSetupPlan(existingProperties = {}) {
-    const name = PROPERTY_NAMES.processingStatus;
-    const existing = existingProperties[name];
-    if (existing && propertyType(existing) !== "select") {
-      const setupIssue = {
-        code: "NOTION_STATUS_FIELD_TYPE",
-        message: DATABASE_SETUP_MESSAGES.statusFieldType
-      };
-      return {
-        addedOptions: [],
-        changed: false,
-        created: false,
-        errors: [setupIssue.message],
-        properties: {},
-        setupIssue
-      };
-    }
-
-    const existingOptions = Array.isArray(existing?.select?.options)
-      ? existing.select.options.filter(option => option?.name)
-      : [];
-    const existingNames = new Set(existingOptions.map(option => option.name));
-    const missing = STATUS_OPTIONS.filter(option => !existingNames.has(option.name));
-    if (existing && !missing.length) {
-      return {
-        addedOptions: [],
-        changed: false,
-        created: false,
-        errors: [],
-        properties: {},
-        setupIssue: null
-      };
-    }
-
-    return {
-      addedOptions: missing.map(option => option.name),
-      changed: true,
-      created: !existing,
-      errors: [],
-      properties: {
-        [name]: {
-          select: {
-            options: existing
-              ? [
-                  ...existingOptions.map(option => option.id
-                    ? { id: option.id }
-                    : { name: option.name }),
-                  ...missing.map(option => ({ ...option }))
-                ]
-              : STATUS_OPTIONS.map(option => ({ ...option }))
-          }
-        }
-      },
-      setupIssue: null
-    };
   }
 
   function dataSourceSearchPayload(startCursor = "") {
@@ -505,29 +150,345 @@
     return payload;
   }
 
-  function topicOrganizerQueryPayload(startCursor = "", pageSize = 50) {
-    if (typeof startCursor === "number") {
-      pageSize = startCursor;
-      startCursor = "";
-    }
-    const payload = {
-      page_size: Math.max(1, Math.min(100, Number(pageSize) || 50)),
-      filter: {
-        and: [{
-          or: [STATUS.topicOrganize, STATUS.topicReview].map(status => ({
-            property: PROPERTY_NAMES.processingStatus,
-            select: { equals: status }
-          }))
-        }, {
-          property: PROPERTY_NAMES.provisionalTopics,
-          rich_text: { is_not_empty: true }
-        }]
-      },
-      sorts: [{ timestamp: "created_time", direction: "ascending" }]
-    };
-    if (startCursor) payload.start_cursor = startCursor;
-    return payload;
+  // ---- Schema and column map ----
+
+  function languageOf(value) {
+    return value === "en" ? "en" : "zh";
   }
+
+  function statusOptionDefinitions(keys, language) {
+    return keys.map(key => ({ name: STATUS_OPTIONS[key].names[language], color: STATUS_OPTIONS[key].color }));
+  }
+
+  function columnDefinition(key, language) {
+    if (key === "processingStatus") {
+      return { select: { options: statusOptionDefinitions(Object.keys(STATUS_OPTIONS), language) } };
+    }
+    return COLUMNS[key].type === "multi_select" ? { multi_select: { options: [] } } : { [COLUMNS[key].type]: {} };
+  }
+
+  // The six columns of a data source prepared from scratch, named in `language`.
+  function analysisPropertySchema(language = "zh") {
+    const lang = languageOf(language);
+    return Object.fromEntries(Object.keys(COLUMNS).map(key => [COLUMNS[key].names[lang], columnDefinition(key, lang)]));
+  }
+
+  // A map for a data source whose columns carry the default names. Notion accepts a name wherever it
+  // accepts an id, so payloads built from it are valid before the real ids have been read.
+  function defaultColumnMap(language = "zh") {
+    const lang = languageOf(language);
+    return {
+      dataSourceId: "",
+      language: lang,
+      columns: Object.fromEntries(Object.entries(COLUMNS).map(([key, column]) => [key, { id: column.names[lang], name: column.names[lang] }])),
+      statusOptions: Object.fromEntries(Object.entries(STATUS_OPTIONS).map(([key, option]) => [key, { id: "", name: option.names[lang] }]))
+    };
+  }
+
+  /**
+   * Ties each column and status key to the data source: the id saved last time while that property is
+   * still there with the right type, otherwise the one property named in either language. Never guesses:
+   * a name taken by another type, or both language names present at once, is a conflict.
+   * Columns and options that are absent are named in the language the data source already uses, then the
+   * saved language, then `language`, so one data source never ends up with two sets.
+   * @returns {{ map, missing, added, addedOptions, conflicts }} `missing` is ready to send as the
+   *   `properties` of a data source update; `added` and `addedOptions` describe it for the preview.
+   */
+  function resolveColumnMap(properties, saved, language) {
+    const entries = Object.entries(properties ?? {}).map(([name, property]) => ({
+      name,
+      id: String(property?.id || name),
+      type: propertyType(property),
+      property
+    }));
+    const columns = {};
+    const conflicts = [];
+    const absent = [];
+    for (const [key, column] of Object.entries(COLUMNS)) {
+      const savedId = saved?.columns?.[key]?.id;
+      const named = entries.filter(entry => Object.values(column.names).includes(entry.name));
+      const found = (savedId && entries.find(entry => entry.id === savedId && entry.type === column.type))
+        || (named.length === 1 && named[0].type === column.type ? named[0] : null);
+      if (found) columns[key] = { id: found.id, name: found.name };
+      else if (named.length > 1) conflicts.push({ key, names: named.map(entry => entry.name), reason: "duplicate" });
+      else if (named.length === 1) {
+        conflicts.push({ key, names: [named[0].name], reason: "type", actualType: named[0].type, expectedType: column.type });
+      } else absent.push(key);
+    }
+
+    const existingLanguage = Object.keys(columns)
+      .map(key => Object.keys(COLUMNS[key].names).find(lang => COLUMNS[key].names[lang] === columns[key].name))
+      .find(Boolean);
+    const lang = languageOf(existingLanguage ?? saved?.language ?? language);
+    const missing = {};
+    const added = [];
+    for (const key of absent) {
+      const name = COLUMNS[key].names[lang];
+      missing[name] = columnDefinition(key, lang);
+      columns[key] = { id: name, name };
+      added.push({ key, name, type: COLUMNS[key].type });
+    }
+
+    const statusEntry = entries.find(entry => entry.id === columns.processingStatus?.id);
+    const options = (statusEntry?.property?.select?.options ?? []).filter(option => option?.name);
+    const statusOptions = {};
+    const absentOptions = [];
+    for (const [key, option] of Object.entries(STATUS_OPTIONS)) {
+      const savedId = saved?.statusOptions?.[key]?.id;
+      const found = (savedId && options.find(item => item.id === savedId))
+        || options.find(item => Object.values(option.names).includes(item.name));
+      statusOptions[key] = found ? { id: String(found.id ?? ""), name: found.name } : { id: "", name: option.names[lang] };
+      if (!found) absentOptions.push(key);
+    }
+    // An existing status column keeps every option it has (by id, so Notion does not recolor or rename it).
+    if (statusEntry && absentOptions.length) {
+      missing[statusEntry.name] = {
+        select: {
+          options: [
+            ...options.map(option => (option.id ? { id: option.id } : { name: option.name })),
+            ...statusOptionDefinitions(absentOptions, lang)
+          ]
+        }
+      };
+    }
+
+    return {
+      map: { dataSourceId: String(saved?.dataSourceId ?? ""), language: lang, columns, statusOptions },
+      missing,
+      added,
+      addedOptions: statusEntry ? absentOptions.map(key => statusOptions[key].name) : [],
+      conflicts
+    };
+  }
+
+  // A page's (or data source's) entry for one column. Notion keys them by name but includes each
+  // column's id, so the id still finds it after a rename; the name covers objects built without ids.
+  function columnEntry(properties, column) {
+    if (!properties || !column) return undefined;
+    return Object.values(properties).find(value => value?.id === column.id) ?? properties[column.name];
+  }
+
+  // ---- Operations bound to one data source ----
+
+  /**
+   * Every payload builder and page reader that depends on column or option names, bound to one data
+   * source's column map. Callers pass column and status keys only.
+   */
+  function bindColumns(columnMap) {
+    const { columns, statusOptions } = columnMap;
+    const propertyId = key => columns[key].id;
+    const value = (page, key) => columnEntry(page?.properties, columns[key]);
+    const plainList = (page, key) => richTextPlain(value(page, key)?.rich_text)
+      .split(/[｜\n]+/u).map(shared.cleanText).filter(Boolean);
+    const topicNames = page => (value(page, "aiTopics")?.multi_select ?? [])
+      .map(item => shared.cleanText(item?.name)).filter(Boolean);
+
+    function statusName(status) {
+      if (!statusOptions[status]) throw new Error(`未知的整理狀態：${status}`);
+      return statusOptions[status].name;
+    }
+
+    // The status key of a page, or "" when the column is empty or holds an option Siftly does not own.
+    function statusKey(page) {
+      const select = value(page, "processingStatus")?.select;
+      if (!select) return "";
+      return Object.keys(statusOptions).find(key => (select.id && statusOptions[key].id === select.id)
+        || statusOptions[key].name === select.name) || "";
+    }
+
+    /**
+     * Page PATCH after AI analysis. Writes AI 標題, AI 關鍵字, AI 摘要, and AI 暫定主題 (result.ai_topics
+     * joined by ｜ — not confirmed AI 主題) plus the status. Batch analysis passes clearFinalTopics false
+     * so confirmed AI 主題 is left unchanged. Single-page reanalysis passes true so AI 主題 is emptied,
+     * invalidating previous confirmed topics beside the new provisionals.
+     */
+    function analysisDraftPayload(result, status = STATUS.topicOrganize, clearFinalTopics = false) {
+      const properties = {
+        [propertyId("aiTitle")]: { rich_text: richText(result.ai_title) },
+        [propertyId("provisionalTopics")]: { rich_text: richText((result.ai_topics ?? []).join("｜")) },
+        [propertyId("aiKeywords")]: { rich_text: richText((result.ai_keywords ?? []).join("｜")) },
+        [propertyId("aiSummary")]: { rich_text: richText(result.ai_summary) },
+        [propertyId("processingStatus")]: { select: { name: statusName(status) } }
+      };
+      if (clearFinalTopics) properties[propertyId("aiTopics")] = { multi_select: [] };
+      return { properties };
+    }
+
+    // Full read for current-page inspection and single-page review, which show fields the organizer does not.
+    function pagePropertyValues(page) {
+      return {
+        id: page?.id ?? "",
+        title: pageTitle(page).slice(0, MAX_STORED_PAGE_TITLE_CHARACTERS),
+        url: String(page?.url ?? "").slice(0, 2000),
+        aiTitle: richTextPlain(value(page, "aiTitle")?.rich_text),
+        aiTopics: topicNames(page),
+        provisionalTopics: plainList(page, "provisionalTopics"),
+        keywords: plainList(page, "aiKeywords"),
+        status: statusKey(page)
+      };
+    }
+
+    // Narrow read for organizer apply and rollback, so those loops depend on taxonomy and status only.
+    function topicOrganizerPageValues(page) {
+      return {
+        id: page?.id ?? "",
+        aiTopics: topicNames(page),
+        provisionalTopics: plainList(page, "provisionalTopics"),
+        status: statusKey(page)
+      };
+    }
+
+    // Any existing AI value is protected, including partial results or whitespace.
+    function isUnanalyzedArticle(page) {
+      if (!page || page.archived || page.in_trash || page.is_archived) return false;
+      const status = value(page, "processingStatus");
+      if (status && ((status.type && status.type !== "select") || status.select != null)) return false;
+      for (const key of AI_VALUE_KEYS) {
+        const property = value(page, key);
+        if (!property) continue;
+        const type = COLUMNS[key].type;
+        if (property.type && property.type !== type) return false;
+        if (!Array.isArray(property[type]) || property[type].length > 0) return false;
+      }
+      return true;
+    }
+
+    function unanalyzedQueryPayload(startCursor = "", pageSize = 10) {
+      const payload = {
+        page_size: Math.max(1, Math.min(50, Math.floor(Number(pageSize) || 10))),
+        filter: {
+          and: [
+            { property: propertyId("processingStatus"), select: { is_empty: true } },
+            ...AI_VALUE_KEYS.map(key => ({ property: propertyId(key), [COLUMNS[key].type]: { is_empty: true } }))
+          ]
+        },
+        sorts: [{ timestamp: "created_time", direction: "descending" }]
+      };
+      if (startCursor) payload.start_cursor = startCursor;
+      return payload;
+    }
+
+    /**
+     * Page PATCH that always replaces confirmed AI 主題 from `topics` and writes the status. AI 暫定主題 is
+     * replaced only when provisionalTopics is an array (including [] to clear it); a non-array (null, used
+     * by rollback when current provisionals no longer match the snapshot) leaves it unchanged.
+     */
+    function topicApplyPayload(topics, status, existingTopicOptions = [], provisionalTopics = null) {
+      const properties = {
+        [propertyId("aiTopics")]: { multi_select: topicMultiSelect(topics, existingTopicOptions, topics) },
+        [propertyId("processingStatus")]: { select: { name: statusName(status) } }
+      };
+      if (Array.isArray(provisionalTopics)) {
+        properties[propertyId("provisionalTopics")] = { rich_text: richText(provisionalTopics.join("｜")) };
+      }
+      return { properties };
+    }
+
+    // Page PATCH that writes only the status.
+    function statusUpdatePayload(status) {
+      return { properties: { [propertyId("processingStatus")]: { select: { name: statusName(status) } } } };
+    }
+
+    function queryPayload(status, startCursor = "", pageSize = 100) {
+      const payload = {
+        page_size: Math.max(1, Math.min(100, Number(pageSize) || 100)),
+        filter: { property: propertyId("processingStatus"), select: { equals: statusName(status) } },
+        sorts: [{ timestamp: "created_time", direction: "ascending" }]
+      };
+      if (startCursor) payload.start_cursor = startCursor;
+      return payload;
+    }
+
+    function topicOrganizerQueryPayload(startCursor = "", pageSize = 50) {
+      const payload = {
+        page_size: Math.max(1, Math.min(100, Number(pageSize) || 50)),
+        filter: {
+          and: [{
+            or: [STATUS.topicOrganize, STATUS.topicReview].map(status => ({
+              property: propertyId("processingStatus"),
+              select: { equals: statusName(status) }
+            }))
+          }, {
+            property: propertyId("provisionalTopics"),
+            rich_text: { is_not_empty: true }
+          }]
+        },
+        sorts: [{ timestamp: "created_time", direction: "ascending" }]
+      };
+      if (startCursor) payload.start_cursor = startCursor;
+      return payload;
+    }
+
+    // The AI 主題 options of a data source's `properties`, deduplicated by topicKey.
+    function topicOptions(properties = {}) {
+      const options = columnEntry(properties, columns.aiTopics)?.multi_select?.options;
+      const seen = new Set();
+      return (Array.isArray(options) ? options : []).reduce((result, option) => {
+        const name = shared.cleanText(option?.name);
+        const key = topicKey(name);
+        if (!name || !key || seen.has(key)) return result;
+        seen.add(key);
+        result.push({
+          id: String(option?.id ?? ""),
+          name,
+          color: shared.cleanText(option?.color) || "default"
+        });
+        return result;
+      }, []);
+    }
+
+    /**
+     * Data-source PATCH for the AI 主題 option list. Preserves existing options by id (or name if id is
+     * absent) and adds new topic names that are not already there by topicKey. Writes no page.
+     */
+    function topicOptionsUpdatePayload(existingOptions = [], newTopics = []) {
+      const existingKeys = new Set(
+        (existingOptions ?? []).map(option => topicKey(option?.name)).filter(Boolean)
+      );
+      const additions = [];
+      for (const value of newTopics ?? []) {
+        const name = shared.cleanText(value).slice(0, 100);
+        const key = topicKey(name);
+        if (!name || !key || existingKeys.has(key)) continue;
+        existingKeys.add(key);
+        additions.push({ name, color: topicColor(name) });
+      }
+      return {
+        properties: {
+          [propertyId("aiTopics")]: {
+            multi_select: {
+              options: [
+                ...(existingOptions ?? []).filter(option => option?.name).map(option => option.id
+                  ? { id: option.id }
+                  : { name: shared.cleanText(option.name), color: option.color || "default" }),
+                ...additions
+              ]
+            }
+          }
+        }
+      };
+    }
+
+    return Object.freeze({
+      columnMap,
+      dataSourceId: columnMap.dataSourceId,
+      analysisDraftPayload,
+      isUnanalyzedArticle,
+      pagePropertyValues,
+      propertyId,
+      queryPayload,
+      statusName,
+      statusUpdatePayload,
+      topicApplyPayload,
+      topicOptions,
+      topicOptionsUpdatePayload,
+      topicOrganizerPageValues,
+      topicOrganizerQueryPayload,
+      unanalyzedQueryPayload
+    });
+  }
+
+  // ---- Reading pages and blocks ----
 
   function richTextPlain(items) {
     return (items ?? []).map(item => {
@@ -648,38 +609,28 @@
 
   return Object.freeze({
     API_VERSION,
-    EXPECTED_TYPES,
+    COLUMNS,
     MAX_STORED_PAGE_TITLE_CHARACTERS,
     PROPERTY_NAMES,
     STATUS,
+    STATUS_NAMES,
     STATUS_OPTIONS,
-    DATABASE_SETUP_MESSAGES,
-    dataSourceSearchPayload,
-    dataSourceSummary,
-    analysisPropertySchema,
-    analysisDraftPayload,
     allPagesQueryPayload,
+    analysisPropertySchema,
+    bindColumns,
     blockToRecord,
     buildArticleText,
+    dataSourceSearchPayload,
+    dataSourceSummary,
+    defaultColumnMap,
     isCaptureMetadataLine,
-    isUnanalyzedArticle,
-    unanalyzedQueryPayload,
     pageSummary,
-    pagePropertyValues,
     propertyType,
-    queryPayload,
+    resolveColumnMap,
     richText,
     richTextPlain,
-    schemaPlan,
-    statusFieldSetupPlan,
-    statusUpdatePayload,
-    topicKey,
-    topicMultiSelect,
-    topicOptions,
     topicColor,
-    topicApplyPayload,
-    topicOrganizerPageValues,
-    topicOrganizerQueryPayload,
-    topicOptionsUpdatePayload
+    topicKey,
+    topicMultiSelect
   });
 });

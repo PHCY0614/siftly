@@ -379,16 +379,16 @@
       </div>
     </form>
   </main>
-  <dialog id="notion-status-dialog" class="confirm-dialog" aria-labelledby="notion-status-dialog-title" aria-describedby="notion-status-dialog-message notion-status-dialog-scope">
+  <dialog id="notion-fields-dialog" class="confirm-dialog" aria-labelledby="notion-fields-dialog-title" aria-describedby="notion-fields-dialog-message notion-fields-dialog-scope">
     <form method="dialog" class="confirm-dialog__surface">
       <div class="confirm-dialog__body">
-        <h2 id="notion-status-dialog-title">準備 Notion 整理狀態</h2>
-        <p id="notion-status-dialog-message" class="confirm-dialog__message"></p>
-        <p id="notion-status-dialog-scope" class="confirm-dialog__scope">只會新增或補齊「整理狀態」這個欄位及分析流程需要的狀態選項；既有欄位、既有選項與文章內容都會保留。</p>
+        <h2 id="notion-fields-dialog-title">準備 Notion 欄位</h2>
+        <p id="notion-fields-dialog-message" class="confirm-dialog__message"></p>
+        <p id="notion-fields-dialog-scope" class="confirm-dialog__scope">只會新增上列欄位與狀態選項，之後切換介面語言不會改名；既有欄位、既有選項與文章內容都會保留。</p>
       </div>
       <div class="confirm-dialog__actions">
-        <button id="notion-status-cancel" class="button primary" type="submit" value="cancel" autofocus>暫不新增</button>
-        <button class="button secondary" type="submit" value="confirm">新增並繼續</button>
+        <button id="notion-fields-cancel" class="button primary" type="submit" value="cancel" autofocus>取消</button>
+        <button class="button secondary" type="submit" value="confirm">建立欄位</button>
       </div>
     </form>
   </dialog>

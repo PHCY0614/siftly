@@ -81,9 +81,9 @@ const importModeDisplay = document.querySelector("#import-mode-display");
 const importModeMenu = document.querySelector("#import-mode-menu");
 const importModeToggle = document.querySelector("#import-mode-toggle");
 const importSplitButton = document.querySelector("#import-split-btn");
-const notionStatusDialog = document.querySelector("#notion-status-dialog");
-const notionStatusDialogMessage = document.querySelector("#notion-status-dialog-message");
-const notionStatusCancel = document.querySelector("#notion-status-cancel");
+const notionFieldsDialog = document.querySelector("#notion-fields-dialog");
+const notionFieldsDialogMessage = document.querySelector("#notion-fields-dialog-message");
+const notionFieldsCancel = document.querySelector("#notion-fields-cancel");
 const enhancedSelects = new Map();
 let organizerData = null;
 let manualCandidateName = "";
@@ -360,30 +360,38 @@ function showStatus(message, kind = "info", localTarget = null) {
   statusBox.className = `status visible ${kind}`;
 }
 
-function confirmNotionStatusPreparation(errorCode) {
-  notionStatusDialogMessage.textContent = errorCode === "NOTION_STATUS_FIELD_MISSING"
-    ? "找不到「整理狀態」欄位。要讓擴充功能自動建立這個欄位嗎？"
-    : "「整理狀態」欄位缺少「待分析」選項。要讓擴充功能自動補齊分析流程需要的狀態選項嗎？";
-  notionStatusDialog.returnValue = "cancel";
+const NOTION_TYPE_LABELS = { rich_text: "文字", multi_select: "多選", select: "單選" };
+
+// Shows what would be created in which database, and resolves true only when the user confirms.
+function confirmNotionFieldsPreparation(preview) {
+  const parts = [];
+  if (preview.addedColumns.length) {
+    parts.push(`建立 ${preview.addedColumns.length} 個欄位：${preview.addedColumns
+      .map(column => `${column.name}（${NOTION_TYPE_LABELS[column.type] || column.type}）`).join("、")}`);
+  }
+  if (preview.addedOptions.length) parts.push(`補上狀態選項：${preview.addedOptions.join("、")}`);
+  notionFieldsDialogMessage.textContent = `將在「${preview.title || "目前的資料庫"}」${parts.join("；")}。`;
+  notionFieldsDialog.returnValue = "cancel";
   return new Promise(resolve => {
-    notionStatusDialog.addEventListener("close", () => {
-      resolve(notionStatusDialog.returnValue === "confirm");
+    notionFieldsDialog.addEventListener("close", () => {
+      resolve(notionFieldsDialog.returnValue === "confirm");
     }, { once: true });
-    notionStatusDialog.showModal();
-    notionStatusCancel.focus();
+    notionFieldsDialog.showModal();
+    notionFieldsCancel.focus();
   });
 }
 
-async function testConnectionsWithStatusPreparation() {
+// Runs `request`; when the database has no Siftly fields yet, previews them, and after the user
+// confirms creates them and runs `request` once more. Returns what was created, or null.
+async function withNotionFields(request, onPreparing) {
   try {
-    return { result: await send("TEST_CONNECTIONS"), statusPreparation: null };
+    return { result: await request(), prepared: null };
   } catch (error) {
-    if (!["NOTION_STATUS_FIELD_MISSING", "NOTION_PENDING_OPTION_MISSING"].includes(error.code)) throw error;
-    const approved = await confirmNotionStatusPreparation(error.code);
-    if (!approved) throw error;
-    showStatus("正在準備「整理狀態」，完成後會繼續測試連線…", "info", connectionStatus);
-    const statusPreparation = await send("PREPARE_NOTION_STATUS_FIELD");
-    return { result: await send("TEST_CONNECTIONS"), statusPreparation };
+    if (error.code !== "NOTION_FIELDS_MISSING") throw error;
+    if (!await confirmNotionFieldsPreparation(await send("PREVIEW_NOTION_FIELDS"))) throw error;
+    onPreparing();
+    const prepared = await send("PREPARE_NOTION_FIELDS");
+    return { result: await request(), prepared };
   }
 }
 
@@ -510,20 +518,12 @@ function normalizeArticlePages(pages) {
 
 async function requestArticleCandidates(payload, generation, canPrepare = true) {
   if (generation !== articlePreparationGeneration) return null;
-  try {
-    return await send("LIST_UNANALYZED_ARTICLES", payload);
-  } catch (error) {
-    if (!canPrepare || generation !== articlePreparationGeneration
-      || !["NOTION_STATUS_FIELD_MISSING", "NOTION_PENDING_OPTION_MISSING"].includes(error.code)) {
-      throw error;
-    }
-    const approved = await confirmNotionStatusPreparation(error.code);
-    if (!approved || generation !== articlePreparationGeneration) throw error;
-    setArticlePreparationStatus("正在準備「整理狀態」，完成後會重新載入文章…");
-    await send("PREPARE_NOTION_STATUS_FIELD");
-    if (generation !== articlePreparationGeneration) return null;
-    return requestArticleCandidates(payload, generation, false);
-  }
+  if (!canPrepare) return send("LIST_UNANALYZED_ARTICLES", payload);
+  const { result } = await withNotionFields(
+    () => (generation === articlePreparationGeneration ? send("LIST_UNANALYZED_ARTICLES", payload) : null),
+    () => setArticlePreparationStatus("正在準備 Notion 欄位，完成後會重新載入文章…")
+  );
+  return result;
 }
 
 async function loadArticleCandidates(reset = false) {
@@ -632,7 +632,7 @@ async function setSelectedArticleStatus(status) {
       processed += chunk.length;
       renderArticleCandidates();
     }
-    const actionName = status === "待分析" ? "已加入待分析" : "已標記不分析";
+    const actionName = status === "pending" ? "已加入待分析" : "已標記不分析";
     const resultParts = [`${actionName} ${updated} 篇`];
     if (skipped) resultParts.push(`略過 ${skipped} 篇`);
     if (failed) resultParts.push(`失敗 ${failed} 篇`);
@@ -884,7 +884,7 @@ function renderNotionDataSources(dataSources, limitReached) {
  * SAVE_SETTINGS from the form. Local guards for empty target/model and
  * output-spec ranges run first. Secrets are not
  * written back into the inputs; placeholders show has*Key. Does not call
- * TEST_CONNECTIONS or ensureSchema.
+ * TEST_CONNECTIONS or read the Notion schema.
  */
 async function saveSettings(showConfirmation = true) {
   if (!notionTarget.value.trim()) {
@@ -1077,11 +1077,11 @@ clearArticleSelectionButton.addEventListener("click", () => {
 });
 
 addArticlesToAnalysisButton.addEventListener("click", () => {
-  void setSelectedArticleStatus("待分析");
+  void setSelectedArticleStatus("pending");
 });
 
 markArticlesNoAnalysisButton.addEventListener("click", () => {
-  void setSelectedArticleStatus("不分析");
+  void setSelectedArticleStatus("skipped");
 });
 
 loadNotionDataSourcesButton.addEventListener("click", async () => {
@@ -1124,16 +1124,14 @@ testButton.addEventListener("click", async () => {
   showStatus("正在儲存、連接 Notion、準備欄位並驗證 AI 服務…", "info", connectionStatus);
   try {
     await saveSettings(false);
-    const { result, statusPreparation } = await testConnectionsWithStatusPreparation();
+    const { result, prepared } = await withNotionFields(
+      () => send("TEST_CONNECTIONS"),
+      () => showStatus("正在準備 Notion 欄位，完成後會繼續測試連線…", "info", connectionStatus)
+    );
     const changes = [
-      statusPreparation?.created
-        ? "已建立整理狀態欄位"
-        : statusPreparation?.changed
-          ? "已補齊整理狀態選項"
-          : "",
-      result.addedProperties.length ? `新增 ${result.addedProperties.join("、")}` : "欄位已齊全",
-      result.updatedProperties.length ? `補上 ${result.updatedProperties.join("、")} 的狀態選項` : "狀態選項已齊全"
-    ].filter(Boolean).join("；");
+      prepared?.addedColumns.length ? `新增 ${prepared.addedColumns.join("、")}` : "欄位已齊全",
+      prepared?.addedOptions.length ? `補上狀態選項 ${prepared.addedOptions.join("、")}` : "狀態選項已齊全"
+    ].join("；");
     const modelNote = result.selectedAvailable
       ? "目前模型可用"
       : "目前模型未出現在清單，請按「掃描所有可用模型」改選";
@@ -1142,7 +1140,7 @@ testButton.addEventListener("click", async () => {
       : "";
     const providerName = result.provider === "vertex" ? "Vertex AI" : "Google AI Studio";
     const pendingNote = result.hasPending ? "" : ` ${NO_PENDING_MESSAGE}`;
-    const fieldTip = (statusPreparation?.created || statusPreparation?.changed || result.addedProperties.length || result.updatedProperties.length)
+    const fieldTip = prepared?.addedColumns.length
       ? " 若看不到新建欄位，請到 Notion 既有資料庫檢視中把它們顯示出來。"
       : "";
     showStatus(`連線成功。${changes}；目前有 ${result.topicCount} 個可用 AI 主題${ignoredNote}；${providerName} ${modelNote}。${pendingNote}${fieldTip}`, result.selectedAvailable && result.hasPending ? "success" : "info", connectionStatus);

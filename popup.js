@@ -112,16 +112,16 @@ let lastStatusAnnouncementBucket = "";
 let hasRenderedStatus = false;
 
 /**
- * Maps INSPECT_PAGE status onto the current-page button. 分析失敗 → retry,
- * 待主題整理 / 待主題確認 → review, 已分析 or analyzed → reanalyze, else
- * analyze. Does not send messages.
+ * Maps the INSPECT_PAGE status key onto the current-page button. failed → retry,
+ * topicOrganize / topicReview → review, analyzed → reanalyze, else analyze.
+ * Does not send messages.
  */
 function currentPageAction(info) {
   if (!info) return { action: "analyze", label: "分析目前頁面" };
-  if (info.status === "分析失敗") return { action: "retry", label: "重試目前頁面" };
-  if (info.status === "待主題整理") return { action: "review", label: "整理主題" };
-  if (info.status === "待主題確認") return { action: "review", label: "繼續確認主題" };
-  if (info.status === "已分析" || info.analyzed) return { action: "reanalyze", label: "重新分析" };
+  if (info.status === "failed") return { action: "retry", label: "重試目前頁面" };
+  if (info.status === "topicOrganize") return { action: "review", label: "整理主題" };
+  if (info.status === "topicReview") return { action: "review", label: "繼續確認主題" };
+  if (info.status === "analyzed" || info.analyzed) return { action: "reanalyze", label: "重新分析" };
   return { action: "analyze", label: "分析目前頁面" };
 }
 

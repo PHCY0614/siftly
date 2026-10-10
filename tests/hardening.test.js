@@ -51,11 +51,11 @@ function testRepoLinksAndPromptNotice() {
 }
 
 function testInspectReadOnlySplit() {
-  assert.match(source("background/topic-review.js"), /readyNotion\(\{ mutateSchema: false \}\)/);
+  assert.doesNotMatch(source("background/settings.js"), /mutateSchema/);
   assert.match(source("background/settings.js"), /async function testConnections\(\)/);
   assert.match(source("background/settings.js"), /await readyNotion\(\)/);
-  assert.match(source("background/messages.js"), /case "PREPARE_NOTION_STATUS_FIELD"/);
-  assert.match(source("options.js"), /PREPARE_NOTION_STATUS_FIELD/);
+  assert.match(source("background/messages.js"), /case "PREPARE_NOTION_FIELDS"/);
+  assert.match(source("options.js"), /PREPARE_NOTION_FIELDS/);
 }
 
 testSafeNotionPageHref();

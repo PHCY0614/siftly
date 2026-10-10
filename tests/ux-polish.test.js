@@ -14,10 +14,10 @@ function source(name) {
 function testNotionStatusDialogHierarchy() {
   const html = source("options.html");
   const css = source("options.css");
-  assert.match(html, /id="notion-status-dialog-message" class="confirm-dialog__message"/);
-  assert.match(html, /id="notion-status-dialog-scope" class="confirm-dialog__scope"/);
-  assert.match(html, /只會新增或補齊「整理狀態」這個欄位及分析流程需要的狀態選項；既有欄位、既有選項與文章內容都會保留。/);
-  assert.match(source("options.js"), /找不到「整理狀態」欄位。要讓擴充功能自動建立這個欄位嗎？/);
+  assert.match(html, /id="notion-fields-dialog-message" class="confirm-dialog__message"/);
+  assert.match(html, /id="notion-fields-dialog-scope" class="confirm-dialog__scope"/);
+  assert.match(html, /只會新增上列欄位與狀態選項，之後切換介面語言不會改名；既有欄位、既有選項與文章內容都會保留。/);
+  assert.match(source("options.js"), /confirmNotionFieldsPreparation/);
   assert.match(css, /\.confirm-dialog__message \{[^}]*font-size:\s*15px;/s);
   assert.match(css, /\.confirm-dialog__scope \{[^}]*font-size:\s*13px;/s);
 }

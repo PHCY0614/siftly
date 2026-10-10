@@ -220,43 +220,57 @@ function testNotionHelpers() {
     ""
   );
 
-  const missingStatus = N.statusFieldSetupPlan({});
-  assert.equal(missingStatus.changed, true);
-  assert.equal(missingStatus.created, true);
+  const statusName = N.PROPERTY_NAMES.processingStatus;
+  const empty = N.resolveColumnMap({}, null, "zh");
+  assert.deepEqual(Object.keys(empty.missing), Object.values(N.PROPERTY_NAMES));
   assert.deepEqual(
-    missingStatus.properties[N.PROPERTY_NAMES.processingStatus].select.options,
-    N.STATUS_OPTIONS
+    empty.missing[statusName].select.options.map(option => option.name),
+    Object.values(N.STATUS_NAMES)
+  );
+
+  const english = N.resolveColumnMap({}, null, "en");
+  assert.deepEqual(Object.keys(english.missing), Object.values(N.COLUMNS).map(column => column.names.en));
+  const englishFields = N.bindColumns(english.map);
+  assert.deepEqual(englishFields.statusUpdatePayload(N.STATUS.pending), {
+    properties: { "Processing Status": { select: { name: "Pending" } } }
+  });
+  assert.equal(
+    englishFields.pagePropertyValues({
+      properties: { "Processing Status": { type: "select", select: { name: "Analyzed" } } }
+    }).status,
+    N.STATUS.analyzed
   );
 
   const customOption = { id: "custom-option-id", name: "自行整理", color: "purple" };
-  const missingPending = N.statusFieldSetupPlan({
-    [N.PROPERTY_NAMES.processingStatus]: {
-      type: "select",
-      select: { options: [customOption] }
-    }
-  });
-  assert.equal(missingPending.changed, true);
-  assert.equal(missingPending.created, false);
-  assert.deepEqual(
-    missingPending.properties[N.PROPERTY_NAMES.processingStatus].select.options[0],
-    { id: customOption.id }
+  const partial = N.resolveColumnMap({
+    [statusName]: { id: "status-id", type: "select", select: { options: [customOption] } }
+  }, null, "en");
+  assert.equal(partial.map.language, "zh", "既有中文欄位決定之後補上的欄位語言");
+  assert.equal(partial.map.columns.processingStatus.id, "status-id");
+  assert.deepEqual(partial.missing[statusName].select.options[0], { id: customOption.id });
+  assert.ok(partial.addedOptions.includes(N.STATUS_NAMES.pending));
+  assert.ok(!Object.keys(partial.missing).some(name => /^[A-Za-z ]+$/.test(name)), "不得另建一套英文欄位");
+
+  const complete = N.resolveColumnMap(N.analysisPropertySchema("en"), null, "zh");
+  assert.deepEqual(complete.missing, {});
+  assert.equal(complete.map.language, "en");
+
+  const renamed = N.resolveColumnMap(
+    { "我的標題": { id: "title-id", type: "rich_text", rich_text: {} } },
+    { dataSourceId: SOURCE_A, language: "zh", columns: { aiTitle: { id: "title-id", name: "AI 標題" } }, statusOptions: {} },
+    "en"
   );
-  assert.ok(missingPending.addedOptions.includes(N.STATUS.pending));
+  assert.deepEqual(renamed.map.columns.aiTitle, { id: "title-id", name: "我的標題" });
+  assert.ok(!(N.PROPERTY_NAMES.aiTitle in renamed.missing), "改名後的欄位仍由 ID 找到，不重複建立");
 
-  const completeStatus = N.statusFieldSetupPlan({
-    [N.PROPERTY_NAMES.processingStatus]: {
-      type: "select",
-      select: { options: N.STATUS_OPTIONS }
-    }
-  });
-  assert.equal(completeStatus.changed, false);
-  assert.deepEqual(completeStatus.properties, {});
-
-  const wrongType = N.statusFieldSetupPlan({
-    [N.PROPERTY_NAMES.processingStatus]: { type: "status", status: {} }
-  });
-  assert.equal(wrongType.changed, false);
-  assert.equal(wrongType.setupIssue.code, "NOTION_STATUS_FIELD_TYPE");
+  const wrongType = N.resolveColumnMap({ [statusName]: { type: "status", status: {} } }, null, "zh");
+  assert.equal(wrongType.conflicts[0].reason, "type");
+  assert.ok(!(statusName in wrongType.missing));
+  const duplicate = N.resolveColumnMap({
+    "AI 主題": { type: "multi_select", multi_select: {} },
+    "AI Topics": { type: "multi_select", multi_select: {} }
+  }, null, "zh");
+  assert.equal(duplicate.conflicts[0].reason, "duplicate");
 }
 
 async function testOneTimeTokenPaginationAndMinimization() {
@@ -491,7 +505,7 @@ async function testSameTargetAndDatabaseChangeGuards() {
   }
 }
 
-async function testConfirmedStatusFieldPreparation() {
+async function testConfirmedFieldPreparation() {
   const N = require(path.join(root, "notion.js"));
   setConfig({ notionTarget: SOURCE_A, dataSourceId: SOURCE_A, databaseId: DB_A });
   setState();
@@ -512,41 +526,51 @@ async function testConfirmedStatusFieldPreparation() {
     throw new Error(`unexpected request: ${options.method} ${url}`);
   };
 
+  const patchCount = () => requests.filter(request => request.options.method === "PATCH").length;
   let response = await send({ type: "TEST_CONNECTIONS" });
   assert.equal(response.ok, false);
-  assert.equal(response.error.code, "NOTION_STATUS_FIELD_MISSING");
-  assert.equal(requests.filter(request => request.options.method === "PATCH").length, 0);
+  assert.equal(response.error.code, "NOTION_FIELDS_MISSING");
+  assert.equal(patchCount(), 0, "測試連線不得建立欄位");
+
+  response = await send({ type: "PREVIEW_NOTION_FIELDS" });
+  assert.equal(response.ok, true);
+  assert.equal(response.data.title, "內容資料庫");
+  assert.deepEqual(Array.from(response.data.addedColumns, column => column.name), Object.values(N.PROPERTY_NAMES));
+  assert.equal(patchCount(), 0, "預覽不得建立欄位");
 
   requests.length = 0;
-  response = await send({ type: "PREPARE_NOTION_STATUS_FIELD" });
-  assert.equal(response.ok, true);
-  assert.equal(response.data.created, true);
-  assert.equal(response.data.changed, true);
-  assert.ok(response.data.addedOptions.includes(N.STATUS.pending));
-  const patchRequests = requests.filter(request => request.options.method === "PATCH");
-  assert.equal(patchRequests.length, 1);
-  const patchBody = JSON.parse(patchRequests[0].options.body);
-  assert.deepEqual(Object.keys(patchBody.properties), [N.PROPERTY_NAMES.processingStatus]);
-  assert.deepEqual(
-    patchBody.properties[N.PROPERTY_NAMES.processingStatus].select.options,
-    N.STATUS_OPTIONS
-  );
+  response = await send({ type: "PREPARE_NOTION_FIELDS" });
+  assert.equal(response.ok, true, response.error?.message);
+  assert.deepEqual([...response.data.addedColumns], Object.values(N.PROPERTY_NAMES));
+  assert.equal(patchCount(), 1);
+  const patchBody = JSON.parse(requests.find(request => request.options.method === "PATCH").options.body);
+  assert.deepEqual(Object.keys(patchBody.properties), Object.values(N.PROPERTY_NAMES));
+  assert.equal(localData[CONFIG_KEY].columnMap.dataSourceId, SOURCE_A);
+  assert.equal(localData[CONFIG_KEY].columnMap.language, "zh");
 
   requests.length = 0;
-  response = await send({ type: "PREPARE_NOTION_STATUS_FIELD" });
+  response = await send({ type: "PREPARE_NOTION_FIELDS" });
   assert.equal(response.ok, true);
-  assert.equal(response.data.changed, false);
-  assert.equal(requests.filter(request => request.options.method === "PATCH").length, 0);
+  assert.deepEqual([...response.data.addedColumns], []);
+  assert.equal(patchCount(), 0, "重試不得重複建立");
+
+  // Switching the interface language must not add a second set of columns to a prepared data source.
+  localData[CONFIG_KEY].uiLanguage = "en";
+  requests.length = 0;
+  response = await send({ type: "PREVIEW_NOTION_FIELDS" });
+  assert.deepEqual([...response.data.addedColumns], []);
+  assert.equal(response.data.language, "zh");
+  localData[CONFIG_KEY].uiLanguage = "zh";
 
   properties = {
     ...properties,
     [N.PROPERTY_NAMES.processingStatus]: { type: "status", status: {} }
   };
   requests.length = 0;
-  response = await send({ type: "PREPARE_NOTION_STATUS_FIELD" });
+  response = await send({ type: "PREPARE_NOTION_FIELDS" });
   assert.equal(response.ok, false);
-  assert.equal(response.error.code, "NOTION_STATUS_FIELD_TYPE");
-  assert.equal(requests.filter(request => request.options.method === "PATCH").length, 0);
+  assert.equal(response.error.code, "NOTION_FIELDS_INVALID");
+  assert.equal(patchCount(), 0);
 }
 
 async function testInspectPageDoesNotPatchSchema() {
@@ -556,13 +580,7 @@ async function testInspectPageDoesNotPatchSchema() {
   setConfig({ notionTarget: SOURCE_A, dataSourceId: SOURCE_A, databaseId: DB_A });
   setState();
   sessionData[TOKEN_KEY] = "session-token";
-  const properties = {
-    Name: { type: "title", title: {} },
-    [N.PROPERTY_NAMES.processingStatus]: {
-      type: "select",
-      select: { options: [{ name: N.STATUS.pending, color: "yellow" }] }
-    }
-  };
+  const properties = { Name: { type: "title", title: {} }, ...N.analysisPropertySchema() };
   const requests = [];
   context.fetch = async (url, options) => {
     const request = { url, options: plain(options) };
@@ -639,7 +657,7 @@ function testRepositoryGuards() {
   assert.match(listFunction, /MAX_NOTION_DATA_SOURCES/);
   const messages = source("background/messages.js");
   assert.match(messages, /case "LIST_NOTION_DATA_SOURCES"/);
-  assert.match(messages, /case "PREPARE_NOTION_STATUS_FIELD"/);
+  assert.match(messages, /case "PREPARE_NOTION_FIELDS"/);
 
   const options = source("options.js");
   const loadConfig = options.slice(options.indexOf("async function loadConfig"), options.indexOf("function compactTargetId"));
@@ -650,17 +668,17 @@ function testRepositoryGuards() {
   assert.match(options, /aiProvider,\s+notionDataSourceSelect,\s+geminiModel/);
   assert.match(options, /enhancedSelects[.]get\(notionDataSourceSelect\)[?][.]sync\(\)/);
   assert.match(options, /error[.]code = response[?][.]error[?][.]code/);
-  assert.match(options, /confirmNotionStatusPreparation/);
-  assert.match(options, /notionStatusDialog[.]showModal\(\)/);
-  assert.match(options, /PREPARE_NOTION_STATUS_FIELD/);
+  assert.match(options, /confirmNotionFieldsPreparation/);
+  assert.match(options, /notionFieldsDialog[.]showModal\(\)/);
+  assert.match(options, /PREPARE_NOTION_FIELDS/);
 
   const html = source("options.html");
   assert.match(html, /id="notion-data-source-status"[^>]*aria-live="polite"/);
   assert.match(html, /<details class="notion-advanced">/);
   assert.match(html, /Notion 中既有內容不會被刪除/);
-  assert.match(html, /id="notion-status-dialog"/);
-  assert.match(html, /value="cancel" autofocus>暫不新增/);
-  assert.match(html, /value="confirm">新增並繼續/);
+  assert.match(html, /id="notion-fields-dialog"/);
+  assert.match(html, /value="cancel" autofocus>取消/);
+  assert.match(html, /value="confirm">建立欄位/);
   assert.match(html, /id="fields-heading">準備 Notion 欄位/);
   assert.doesNotMatch(html, /Notion-AI-Analyzer/);
 
@@ -685,7 +703,7 @@ async function main() {
   await testLimitAndRepeatedCursor();
   await testSafeErrors();
   await testSameTargetAndDatabaseChangeGuards();
-  await testConfirmedStatusFieldPreparation();
+  await testConfirmedFieldPreparation();
   await testInspectPageDoesNotPatchSchema();
   await testNotionPathAndPageBelongs();
   testRepositoryGuards();

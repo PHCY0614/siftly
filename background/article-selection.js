@@ -44,19 +44,18 @@ async function listUnanalyzedArticles(options = {}) {
   assertArticleSelectionAllowed();
   articleSelectionBusy = true;
   try {
-    // Resolve and validate schema without adding fields or writing article pages.
-    const { config, token, dataSource } = await readyNotion({ mutateSchema: false });
+    const { config, fields, token } = await readyNotion();
     if (options.dataSourceId) assertSelectionDataSource(config.dataSourceId, options.dataSourceId);
     const result = await withAbortTimeout(async signal => {
       const response = await notionRequest(`/v1/data_sources/${config.dataSourceId}/query`, {
         method: "POST",
-        body: N.unanalyzedQueryPayload(dataSource.properties ?? {}, cursor, options.pageSize),
+        body: fields.unanalyzedQueryPayload(cursor, options.pageSize),
         token,
         signal
       });
       const pages = [];
       for (const page of response.results ?? []) {
-        if (!N.isUnanalyzedArticle(page)) continue;
+        if (!fields.isUnanalyzedArticle(page)) continue;
         const id = S.normalizeUuid(page.id);
         if (!id) continue;
         const preview = await readArticlePreview(id, token, signal);
@@ -87,9 +86,9 @@ async function setArticleAnalysisStatus(dataSourceId, pageIds, status) {
   assertArticleSelectionAllowed();
   articleSelectionBusy = true;
   try {
-    // Validate the target before allowing any schema or page PATCH.
+    // Validate the target before allowing any page PATCH.
     assertSelectionDataSource((await readConfig()).dataSourceId, dataSourceId);
-    const { config, token } = await readyNotion();
+    const { config, fields, token } = await readyNotion();
     assertSelectionDataSource(config.dataSourceId, dataSourceId);
     const result = { dataSourceId: config.dataSourceId, updatedIds: [], skipped: [], failed: [] };
     const ids = [...new Set(pageIds.map(S.normalizeUuid))];
@@ -108,10 +107,10 @@ async function setArticleAnalysisStatus(dataSourceId, pageIds, status) {
               || compactNotionId(page.parent?.data_source_id) !== compactNotionId(config.dataSourceId)) {
               return "文章不屬於目前資料庫";
             }
-            if (!N.isUnanalyzedArticle(page)) return "文章已有分析內容或整理狀態，已保留原樣";
+            if (!fields.isUnanalyzedArticle(page)) return "文章已有分析內容或整理狀態，已保留原樣";
             assertSelectionDataSource((await readConfig()).dataSourceId, config.dataSourceId);
             await notionRequest(`/v1/pages/${id}`, {
-              method: "PATCH", body: N.statusUpdatePayload(status), token, signal
+              method: "PATCH", body: fields.statusUpdatePayload(status), token, signal
             });
             return "";
           }, null, 30000, "ARTICLE_SELECTION_WRITE_TIMEOUT", "設定文章狀態逾時，請重新載入確認後再重試");
@@ -136,7 +135,7 @@ async function setArticleAnalysisStatus(dataSourceId, pageIds, status) {
         stateCache.knownPending = null;
         stateCache.databaseCheck = null;
         stateCache.lastScanAt = "";
-        if (stateCache.lastError === N.DATABASE_SETUP_MESSAGES.noPendingPages) stateCache.lastError = "";
+        if (stateCache.lastError === NO_PENDING_PAGES_MESSAGE) stateCache.lastError = "";
         await persistState();
       }
     }

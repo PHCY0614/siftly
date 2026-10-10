@@ -2,26 +2,23 @@
 
 // Service worker: topic organizer preparation, apply, rollback, and dictionary.
 
-async function queryTopicOrganizerPages(dataSourceId, token, options = {}) {
+async function queryTopicOrganizerPages(fields, token, options = {}) {
   const pages = [];
   const topicKeys = new Set();
   let cursor = "";
   let done = false;
   const eligibleStatuses = new Set([N.STATUS.topicOrganize, N.STATUS.topicReview]);
-  const queryPath = `/v1/data_sources/${dataSourceId}/query?${[
-    N.PROPERTY_NAMES.processingStatus,
-    N.PROPERTY_NAMES.provisionalTopics,
-    N.PROPERTY_NAMES.aiTopics
-  ].map(name => `filter_properties[]=${encodeURIComponent(name)}`).join("&")}`;
+  const queryPath = `/v1/data_sources/${fields.dataSourceId}/query?${["processingStatus", "provisionalTopics", "aiTopics"]
+    .map(key => `filter_properties[]=${encodeURIComponent(fields.propertyId(key))}`).join("&")}`;
   do {
     const response = await notionRequest(queryPath, {
       method: "POST",
-      body: N.topicOrganizerQueryPayload(cursor, 50),
+      body: fields.topicOrganizerQueryPayload(cursor, 50),
       signal: options.signal,
       token
     });
     for (const rawPage of response.results ?? []) {
-      const page = N.topicOrganizerPageValues(rawPage);
+      const page = fields.topicOrganizerPageValues(rawPage);
       if (!eligibleStatuses.has(page.status) || !page.provisionalTopics.length) continue;
       pages.push(page);
       for (const name of uniqueTopicNames(page.provisionalTopics)) topicKeys.add(N.topicKey(name));
@@ -472,10 +469,10 @@ async function prepareTopicOrganizer() {
   const controller = new AbortController();
   activeAbortController = controller;
   try {
-    const { config, token } = await readyNotion();
+    const { config, fields, token } = await readyNotion();
     await setStage("掃描 Notion", { progress: 0 });
     const [pages, options] = await Promise.all([
-      queryTopicOrganizerPages(config.dataSourceId, token, { signal: controller.signal }),
+      queryTopicOrganizerPages(fields, token, { signal: controller.signal }),
       readTopicOptions(config, token, controller.signal)
     ]);
     const candidates = topicOrganizerCandidates(pages, options, config);
@@ -750,7 +747,7 @@ async function applyTopicOrganizerGroups(groupsInput = []) {
     }
   }
   const controller = new AbortController();
-  const { config, token } = await readyNotion();
+  const { config, fields, token } = await readyNotion();
   let options = validTopicOptions(await readTopicOptions(config, token));
   const optionKeys = new Set(options.map(item => N.topicKey(item.name)));
   const newStandards = uniqueTopicNames(selected.map(group => group.standardTopic))
@@ -760,7 +757,7 @@ async function applyTopicOrganizerGroups(groupsInput = []) {
   if (newStandards.length) {
     await notionRequest(`/v1/data_sources/${config.dataSourceId}`, {
       method: "PATCH",
-      body: N.topicOptionsUpdatePayload(options, newStandards),
+      body: fields.topicOptionsUpdatePayload(options, newStandards),
       retrySafe: true,
       token
     });
@@ -808,7 +805,7 @@ async function applyTopicOrganizerGroups(groupsInput = []) {
       if (controller.signal.aborted) throw new DOMException("已停止", "AbortError");
       const page = affectedPages[index];
       const currentPage = await notionRequest(`/v1/pages/${page.id}`, { signal: controller.signal, token });
-      const current = N.topicOrganizerPageValues(currentPage);
+      const current = fields.topicOrganizerPageValues(currentPage);
       const additions = uniqueTopicNames((current.provisionalTopics ?? [])
         .map(name => aliasMap.get(N.topicKey(name)) || "")
         .filter(Boolean))
@@ -845,7 +842,7 @@ async function applyTopicOrganizerGroups(groupsInput = []) {
       if (additions.length || current.status !== status || unresolved.length !== (current.provisionalTopics ?? []).length) {
         await notionRequest(`/v1/pages/${page.id}`, {
           method: "PATCH",
-          body: N.topicApplyPayload(finalTopics, status, options, unresolved),
+          body: fields.topicApplyPayload(finalTopics, status, options, unresolved),
           retrySafe: true,
           signal: controller.signal,
           token
@@ -938,7 +935,7 @@ async function resolveOrganizerUnclassified(candidateName, action, replacementTo
     return topicOrganizerForUi();
   }
 
-  const { config, token } = await readyNotion();
+  const { config, fields, token } = await readyNotion();
   let options = validTopicOptions(await readTopicOptions(config, token));
   const byKey = new Map(options.map(option => [N.topicKey(option.name), option.name]));
   let selectedTopic = "";
@@ -962,7 +959,7 @@ async function resolveOrganizerUnclassified(candidateName, action, replacementTo
   if (selectedTopic && !byKey.has(N.topicKey(selectedTopic))) {
     await notionRequest(`/v1/data_sources/${config.dataSourceId}`, {
       method: "PATCH",
-      body: N.topicOptionsUpdatePayload(options, [selectedTopic]),
+      body: fields.topicOptionsUpdatePayload(options, [selectedTopic]),
       retrySafe: true,
       token
     });
@@ -996,7 +993,7 @@ async function resolveOrganizerUnclassified(candidateName, action, replacementTo
     for (let index = 0; index < affectedPages.length; index += 1) {
       const cachedPage = affectedPages[index];
       const currentPage = await notionRequest(`/v1/pages/${cachedPage.id}`, { token });
-      const current = N.topicOrganizerPageValues(currentPage);
+      const current = fields.topicOrganizerPageValues(currentPage);
       if (!(current.provisionalTopics ?? []).some(name => N.topicKey(name) === candidateKey)) {
         organizer.progress.done = index + 1;
         continue;
@@ -1024,7 +1021,7 @@ async function resolveOrganizerUnclassified(candidateName, action, replacementTo
       }
       await notionRequest(`/v1/pages/${cachedPage.id}`, {
         method: "PATCH",
-        body: N.topicApplyPayload(finalTopics, status, options, unresolved),
+        body: fields.topicApplyPayload(finalTopics, status, options, unresolved),
         retrySafe: true,
         token
       });
@@ -1094,11 +1091,11 @@ async function rollbackTopicOrganizer() {
   assertIdle();
   const snapshot = stateCache.topicRollback;
   if (!snapshot?.pages?.length) throw new AppError("目前沒有可回復的上一次套用紀錄", { code: "NO_ROLLBACK" });
-  const { config, token } = await readyNotion();
+  const { config, fields, token } = await readyNotion();
   const options = validTopicOptions(await readTopicOptions(config, token));
   for (const page of snapshot.pages) {
     const currentPage = await notionRequest(`/v1/pages/${page.id}`, { token });
-    const current = N.topicOrganizerPageValues(currentPage);
+    const current = fields.topicOrganizerPageValues(currentPage);
     const removeKeys = new Set((page.addedTopics ?? []).map(N.topicKey));
     const topics = (current.aiTopics ?? []).filter(name => !removeKeys.has(N.topicKey(name)));
     const status = current.status === page.statusAfter ? page.statusBefore : current.status;
@@ -1111,7 +1108,7 @@ async function rollbackTopicOrganizer() {
     if (topics.length !== (current.aiTopics ?? []).length || status !== current.status || restoreProvisional) {
       await notionRequest(`/v1/pages/${page.id}`, {
         method: "PATCH",
-        body: N.topicApplyPayload(topics, status || N.STATUS.topicReview, options, restoreProvisional),
+        body: fields.topicApplyPayload(topics, status || N.STATUS.topicReview, options, restoreProvisional),
         retrySafe: true,
         token
       });

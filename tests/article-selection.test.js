@@ -19,6 +19,7 @@ const PAGE_4 = "11111111-1111-4111-8111-111111111115";
 const PAGE_5 = "11111111-1111-4111-8111-111111111116";
 
 const N = require(path.join(root, "notion.js"));
+const F = N.bindColumns(N.defaultColumnMap());
 
 function source(name) {
   return fs.readFileSync(path.join(root, name), "utf8");
@@ -176,48 +177,43 @@ function requestInfo(url, options) {
 }
 
 function testNotionSelectionHelpers() {
-  assert.equal(N.STATUS.skipped, "不分析");
-  assert.ok(N.STATUS_OPTIONS.some(option => option.name === "不分析"));
+  assert.equal(N.STATUS_NAMES.skipped, "不分析");
+  assert.equal(N.STATUS_OPTIONS.skipped.names.en, "Skipped");
 
   const valid = page(PAGE_1);
-  assert.equal(N.isUnanalyzedArticle(valid), true);
-  assert.equal(N.isUnanalyzedArticle(page(PAGE_1, { status: N.STATUS.skipped })), false);
-  assert.equal(N.isUnanalyzedArticle(page(PAGE_1, { aiTitle: " " })), false, "空白但存在的內容也要保護");
-  assert.equal(N.isUnanalyzedArticle(page(PAGE_1, { aiTopics: [{ name: "主題" }] })), false);
-  assert.equal(N.isUnanalyzedArticle(page(PAGE_1, { archived: true })), false);
-  assert.equal(N.isUnanalyzedArticle(page(PAGE_1, { inTrash: true })), false);
+  assert.equal(F.isUnanalyzedArticle(valid), true);
+  assert.equal(F.isUnanalyzedArticle(page(PAGE_1, { status: N.STATUS_NAMES.skipped })), false);
+  assert.equal(F.isUnanalyzedArticle(page(PAGE_1, { aiTitle: " " })), false, "空白但存在的內容也要保護");
+  assert.equal(F.isUnanalyzedArticle(page(PAGE_1, { aiTopics: [{ name: "主題" }] })), false);
+  assert.equal(F.isUnanalyzedArticle(page(PAGE_1, { archived: true })), false);
+  assert.equal(F.isUnanalyzedArticle(page(PAGE_1, { inTrash: true })), false);
 
   const missingProperties = { ...valid, properties: { Name: valid.properties.Name } };
-  assert.equal(N.isUnanalyzedArticle(missingProperties), true, "缺少 AI 欄位時視為空白");
+  assert.equal(F.isUnanalyzedArticle(missingProperties), true, "缺少 AI 欄位時視為空白");
 
   const existingStatus = {
     type: "select",
     select: {
       options: [
         { id: "custom-id", name: "自訂狀態", color: "purple" },
-        { id: "skip-id", name: N.STATUS.skipped, color: "gray" },
-        { id: "pending-id", name: N.STATUS.pending, color: "yellow" }
+        { id: "skip-id", name: N.STATUS_NAMES.skipped, color: "gray" },
+        { id: "pending-id", name: N.STATUS_NAMES.pending, color: "yellow" }
       ]
     }
   };
-  const schema = N.schemaPlan({ [N.PROPERTY_NAMES.processingStatus]: existingStatus });
-  const statusOptions = schema.properties[N.PROPERTY_NAMES.processingStatus].select.options;
+  const schema = N.resolveColumnMap({ [N.PROPERTY_NAMES.processingStatus]: existingStatus }, null, "zh");
+  const statusOptions = schema.missing[N.PROPERTY_NAMES.processingStatus].select.options;
   assert.deepEqual(statusOptions.slice(0, 3), [
     { id: "custom-id" }, { id: "skip-id" }, { id: "pending-id" }
   ], "自訂與既有不分析選項不可被覆寫");
 
-  const properties = {
-    [N.PROPERTY_NAMES.processingStatus]: { type: "select" },
-    [N.PROPERTY_NAMES.aiTitle]: { type: "rich_text" },
-    [N.PROPERTY_NAMES.aiSummary]: { type: "rich_text" }
-  };
-  const payload = N.unanalyzedQueryPayload(properties, "cursor-1", 9);
+  const payload = F.unanalyzedQueryPayload("cursor-1", 9);
   assert.equal(payload.page_size, 9, "顯式 pageSize 會保留 1～50 範圍");
   assert.equal(payload.start_cursor, "cursor-1");
   assert.equal(payload.sorts[0].timestamp, "created_time");
   assert.equal(payload.sorts[0].direction, "descending");
-  assert.equal(payload.filter.and.length, 3);
-  assert.equal(N.unanalyzedQueryPayload(properties, "", 100).page_size, 50);
+  assert.equal(payload.filter.and.length, 6);
+  assert.equal(F.unanalyzedQueryPayload("", 100).page_size, 50);
   assert.ok(payload.filter.and.every(item => item.property
     && Object.values(item).some(value => value?.is_empty === true)));
 }
@@ -397,7 +393,7 @@ async function testStatusSelectionPartialFailureAndRetry(harness) {
   assert.equal(skipped.ok, true);
   assert.deepEqual([...skipped.data.updatedIds], [PAGE_5]);
   const skippedPatch = calls.filter(call => call.method === "PATCH").at(-1);
-  assert.equal(skippedPatch.body.properties[N.PROPERTY_NAMES.processingStatus].select.name, N.STATUS.skipped);
+  assert.equal(skippedPatch.body.properties[N.PROPERTY_NAMES.processingStatus].select.name, N.STATUS_NAMES.skipped);
   const afterSkipList = await harness.send({ type: "LIST_UNANALYZED_ARTICLES", dataSourceId: SOURCE_A });
   assert.equal(afterSkipList.ok, true);
   assert.equal([...afterSkipList.data.pages].some(item => item.id === PAGE_5), false);

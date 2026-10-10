@@ -83,8 +83,9 @@ function testBoundedPageSummaries() {
   assert.equal(summary.title.length, 500);
   assert.equal(N.MAX_STORED_PAGE_TITLE_CHARACTERS, 500);
   assert.equal(summary.url.length, 2000);
-  assert.equal(N.queryPayload(N.STATUS.pending, "", 999).page_size, 100);
-  assert.equal(N.queryPayload(N.STATUS.pending, "", 40).page_size, 40);
+  const fields = N.bindColumns(N.defaultColumnMap());
+  assert.equal(fields.queryPayload(N.STATUS.pending, "", 999).page_size, 100);
+  assert.equal(fields.queryPayload(N.STATUS.pending, "", 40).page_size, 40);
 }
 
 function testRepositoryGuards() {
@@ -95,8 +96,13 @@ function testRepositoryGuards() {
   assert.equal(G.DIRECT_TEXT_LIMIT, 180000);
   assert.equal(G.CHUNK_TEXT_LIMIT, 78000);
   assert.match(source("background/analysis.js"), /articleText\.length <= directTextLimit/);
-  assert.match(source("background/topic-review.js"), /readyNotion\(\{ mutateSchema: false \}\)/);
-  assert.match(source("background/settings.js"), /options\.mutateSchema !== false/);
+  // Only the user-confirmed preparation step may change the data source schema.
+  const settingsSource = source("background/settings.js");
+  const readyNotionSource = settingsSource.slice(
+    settingsSource.indexOf("async function inspectNotionFields"),
+    settingsSource.indexOf("async function prepareNotionFields")
+  );
+  assert.doesNotMatch(readyNotionSource, /method: "PATCH"/);
   assert.match(source("background/transport.js"), /path\.startsWith\("\/v1\/"\)/);
   assert.match(background, /MAX_INPUT_TOKENS = 350000/);
   assert.match(background, /:countTokens/);

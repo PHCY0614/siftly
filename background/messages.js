@@ -17,8 +17,10 @@ async function handleMessage(message) {
       return saveSettings(message.settings ?? {});
     case "TEST_CONNECTIONS":
       return testConnections();
-    case "PREPARE_NOTION_STATUS_FIELD":
-      return prepareNotionStatusField();
+    case "PREVIEW_NOTION_FIELDS":
+      return previewNotionFields();
+    case "PREPARE_NOTION_FIELDS":
+      return prepareNotionFields();
     case "LIST_MODELS": {
       const config = await readConfig();
       const provider = normalizeAiProvider(config.aiProvider);
