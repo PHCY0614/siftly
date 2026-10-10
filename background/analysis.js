@@ -78,7 +78,8 @@ async function generateAndValidate(
       topicNames,
       allowTopicProposals,
       excludedPersonTerms,
-      analysisOptions.outputSpec
+      analysisOptions.outputSpec,
+      analysisOptions.outputLanguage
     );
     if (checked.ok) return checked.value;
     errors = checked.errors;
@@ -128,7 +129,8 @@ async function generateAndValidate(
     topicNames,
     allowTopicProposals,
     excludedPersonTerms,
-    analysisOptions.outputSpec
+    analysisOptions.outputSpec,
+    analysisOptions.outputLanguage
   );
   if (!checkedRepair.ok) {
     throw new AppError(`AI 修正輸出仍未符合規則：${checkedRepair.errors.join("；")}`, {
@@ -146,8 +148,9 @@ async function generateAndValidate(
  * setStage; this function does not own queue mutation. Invoked only from
  * analyzeArticle when the article exceeds the provider's direct-text limit.
  */
-async function extractChunkNote(chunk, index, total, provider, model, apiKey, signal, requestTimeoutMinutes) {
-  let payload = G.buildChunkRequest(chunk, index, total, model);
+async function extractChunkNote(chunk, index, total, provider, model, apiKey, signal, requestTimeoutMinutes, outputLanguage = "zh-TW") {
+  const promptOptions = { outputLanguage };
+  let payload = G.buildChunkRequest(chunk, index, total, model, promptOptions);
   let lastError = null;
   const diagnostic = { attempts: [], chunk: index, model, provider };
   for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -160,7 +163,7 @@ async function extractChunkNote(chunk, index, total, provider, model, apiKey, si
       const checked = G.validateChunkNotes(parsed.value);
       if (checked.ok) return checked.value;
       lastError = new Error(checked.errors.join("；"));
-      payload = G.buildChunkRepairRequest(parsed.raw, checked.errors, model);
+      payload = G.buildChunkRepairRequest(parsed.raw, checked.errors, model, promptOptions);
     } catch (error) {
       if (error instanceof AppError || error?.name === "AbortError") {
         if (error instanceof AppError && !error.diagnostic && diagnostic.attempts.length) {
@@ -176,7 +179,7 @@ async function extractChunkNote(chunk, index, total, provider, model, apiKey, si
         });
       }
       if (error?.nonRetryable || !error?.rawOutput) break;
-      payload = G.buildChunkRepairRequest(error.rawOutput, [error.message || "輸出無法解析"], model);
+      payload = G.buildChunkRepairRequest(error.rawOutput, [error.message || "輸出無法解析"], model, promptOptions);
     }
   }
   throw new AppError(`第 ${index} 段的 AI 筆記無法解析：${lastError?.message || "未知錯誤"}`, {
@@ -195,17 +198,19 @@ async function extractChunkNote(chunk, index, total, provider, model, apiKey, si
 async function analyzeArticle(articleText, config, signal) {
   const { apiKey, model, provider } = await activeAiContext(config);
   const excludedPersonTerms = normalizeExcludedPersonTerms(config.excludedPersonTerms);
+  const outputLanguage = P.normalizeOutputLanguage(config.outputLanguage);
   const analysisOptions = {
     customPrompt: "",
     summaryInstructions: P.normalizeSummaryInstructions(config.summaryInstructions),
-    outputSpec: P.normalizeOutputSpec(config.outputSpec),
+    outputLanguage,
+    outputSpec: P.normalizeOutputSpec(outputLanguage === "en" ? config.englishOutputSpec : config.outputSpec, outputLanguage),
     requestTimeoutMinutes: Number(config.requestTimeoutMinutes) || 0
   };
   const directTextLimit = G.DIRECT_TEXT_LIMIT;
   const chunkTextLimit = G.CHUNK_TEXT_LIMIT;
   if (articleText.length <= directTextLimit) {
     return generateAndValidate(
-      P.buildArticlePrompt(articleText, [], true, excludedPersonTerms),
+      P.buildArticlePrompt(articleText, [], true, excludedPersonTerms, { outputLanguage }),
       provider,
       model,
       apiKey,
@@ -222,14 +227,16 @@ async function analyzeArticle(articleText, config, signal) {
   for (let index = 0; index < chunks.length; index += 1) {
     notes.push(await extractChunkNote(
       chunks[index], index + 1, chunks.length, provider, model, apiKey, signal,
-      analysisOptions.requestTimeoutMinutes
+      analysisOptions.requestTimeoutMinutes,
+      outputLanguage
     ));
   }
   const notesPrompt = P.buildNotesPrompt(
     G.formatChunkNotes(notes),
     [],
     true,
-    excludedPersonTerms
+    excludedPersonTerms,
+    { outputLanguage }
   );
   return generateAndValidate(
     notesPrompt,

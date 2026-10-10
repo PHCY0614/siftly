@@ -80,6 +80,8 @@ const DEFAULT_CONFIG = Object.freeze({
   rememberVertexKey: false,
   rememberNotionToken: false,
   requestTimeoutMinutes: 5,
+  outputLanguage: "zh-TW",
+  englishOutputSpec: P.DEFAULT_ENGLISH_OUTPUT_SPEC,
   summaryInstructions: "",
   outputSpec: P.DEFAULT_OUTPUT_SPEC,
   preferExistingTopicsByDataSource: {},
@@ -127,3 +129,4 @@ let activeAbortController = null;
 let processingPromise = null;
 let preparedDataSourceId = "";
 let customAnalysisPromptCleared = false;
+let currentOutputLanguage = "zh-TW";

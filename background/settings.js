@@ -349,6 +349,8 @@ function resolveProviderSelection(settings, current) {
 
 function resolvePromptSettings(settings, current) {
   const outputSpec = P.normalizeOutputSpec(settings.outputSpec ?? current.outputSpec);
+  const englishOutputSpec = P.normalizeOutputSpec(settings.englishOutputSpec ?? current.englishOutputSpec, "en");
+  const outputLanguage = P.normalizeOutputLanguage(settings.outputLanguage ?? current.outputLanguage);
   // Custom-prompt UI is gone. Ignore analysisPrompt / analysisPromptCustomized
   // from SAVE_SETTINGS so a partial or forged message cannot restore a hidden
   // prompt. Leftovers are cleared on readConfig and again here on save.
@@ -370,7 +372,7 @@ function resolvePromptSettings(settings, current) {
   const summaryInstructions = settings.summaryInstructions === undefined
     ? P.normalizeSummaryInstructions(current.summaryInstructions)
     : validateSummaryInstructions(settings.summaryInstructions);
-  return { analysisPrompt: "", analysisPromptCustomized: false, outputSpec, requestTimeoutMinutes, summaryInstructions };
+  return { analysisPrompt: "", analysisPromptCustomized: false, outputSpec, englishOutputSpec, outputLanguage, requestTimeoutMinutes, summaryInstructions };
 }
 
 function validateSummaryInstructions(value) {
@@ -461,6 +463,8 @@ function buildNextConfig(settings, current, resolved) {
       : Boolean(current.rememberNotionToken),
     requestTimeoutMinutes: promptSettings.requestTimeoutMinutes,
     outputSpec: promptSettings.outputSpec,
+    englishOutputSpec: promptSettings.englishOutputSpec,
+    outputLanguage: promptSettings.outputLanguage,
     summaryInstructions: promptSettings.summaryInstructions,
     preferExistingTopicsByDataSource,
     topicAliases: targetChanged ? {} : normalizeTopicAliases(current.topicAliases),
@@ -571,6 +575,7 @@ async function saveSettings(settings) {
   ]);
   await writeConfig(next);
   const clearedQueueCount = targetChanged ? await resetStateForDatabaseChange() : 0;
+  currentOutputLanguage = next.outputLanguage;
   return buildSaveResponse(next, {
     clearedQueueCount,
     preferExistingTopics,

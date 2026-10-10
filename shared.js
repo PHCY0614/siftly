@@ -57,6 +57,19 @@
   }
 
   /**
+   * Counts English words without treating Chinese text or punctuation as
+   * words. Internal apostrophes, hyphens, abbreviation dots, and numeric
+   * separators stay in the same token so validation matches the prompt's
+   * notion of an English word.
+   */
+  function wordCount(value) {
+    const text = cleanText(value);
+    if (!text) return 0;
+    const tokens = text.match(/[A-Za-z0-9]+(?:[.'’\-/:%,+][A-Za-z0-9]+)*/gu);
+    return tokens ? tokens.length : 0;
+  }
+
+  /**
    * Strips a leading models/ prefix and keeps only [A-Za-z0-9._-].
    * Invalid names become "".
    */
@@ -160,6 +173,7 @@
     safeNotionPageHref,
     sleep,
     truncateMessage,
-    visibleLength
+    visibleLength,
+    wordCount
   });
 });

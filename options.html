@@ -188,7 +188,7 @@
             <p>這個工具會用到的欄位，不會影響你的內容與現有欄位。</p>
           </div>
         </div>
-        <p class="hint">按「測試連線並準備欄位」會補齊缺少的欄位；缺少「整理狀態」時會先詢問，接著請在 Notion 把文章標成「待分析」，才能開始整理。分析後工具會先寫暫定主題，正式主題須你確認整理後才寫入。</p>
+        <p class="hint">按「測試連線並準備欄位」會補齊缺少的欄位；完成後可在上方「準備待分析文章」選取文章加入分析，不必逐篇回到 Notion 設定狀態。分析後工具會先寫暫定主題，正式主題須你確認整理後才寫入。</p>
         <p id="fields-view-tip" class="hint" role="note">新欄位可能在既有資料庫檢視中被隱藏；請到 Notion 把需要的欄位顯示出來。</p>
         <div class="field-grid" aria-label="工具會用到的欄位">
           <span><b>AI 標題</b></span>
@@ -209,18 +209,24 @@
           <span class="step">4</span>
           <div>
             <h2 id="advanced-heading">進階分析設定</h2>
-            <p>調整標題、主題、關鍵字、摘要的字數與數量，以及單次 AI 等待時間。</p>
+            <p>調整標題、主題、關鍵字、摘要的長度與數量，以及單次 AI 等待時間。</p>
           </div>
         </div>
+        <label for="output-language">輸出語言</label>
+        <select id="output-language" aria-describedby="output-language-help">
+          <option value="zh-TW" selected>正體中文</option>
+          <option value="en">英文</option>
+        </select>
+        <p id="output-language-help" class="hint">儲存後，後續分析會使用所選語言；既有內容與已確認的主題名稱會保留原樣。</p>
         <p id="output-spec-summary" class="hint">目前分析規格：標題最多 12 字｜主題 1～3 個｜關鍵字 5 個｜摘要 100～250 字</p>
-        <p class="hint">可調範圍：標題上限 6～30 字｜主題最少與最多各 1～5 個｜關鍵字 3～10 個｜摘要最少 50～500 字、最多 100～800 字。</p>
+        <p id="output-spec-range-hint" class="hint">可調範圍：標題上限 6～30 字｜主題最少與最多各 1～5 個｜關鍵字 3～10 個｜摘要最少 50～500 字、最多 100～800 字。</p>
         <div class="spec-grid">
-          <label>標題上限（最高 30）<input id="title-max" type="number" min="6" max="30" value="12"></label>
-          <label>主題最少（最高 5）<input id="topic-min" type="number" min="1" max="5" value="1"></label>
-          <label>主題最多（最高 5）<input id="topic-max" type="number" min="1" max="5" value="3"></label>
-          <label>關鍵字數量（最高 10）<input id="keyword-count" type="number" min="3" max="10" value="5"></label>
-          <label>摘要最少（最高 500）<input id="summary-min" type="number" min="50" max="500" value="100"></label>
-          <label>摘要最多（最高 800）<input id="summary-max" type="number" min="100" max="800" value="250"></label>
+          <label><span id="title-max-label">標題上限（最高 30）</span><input id="title-max" type="number" min="6" max="30" value="12"></label>
+          <label><span id="topic-min-label">主題最少（最高 5）</span><input id="topic-min" type="number" min="1" max="5" value="1"></label>
+          <label><span id="topic-max-label">主題最多（最高 5）</span><input id="topic-max" type="number" min="1" max="5" value="3"></label>
+          <label><span id="keyword-count-label">關鍵字數量（最高 10）</span><input id="keyword-count" type="number" min="3" max="10" value="5"></label>
+          <label><span id="summary-min-label">摘要最少（最高 500）</span><input id="summary-min" type="number" min="50" max="500" value="100"></label>
+          <label><span id="summary-max-label">摘要最多（最高 800）</span><input id="summary-max" type="number" min="100" max="800" value="250"></label>
         </div>
         <button id="reset-output-spec" class="button secondary compact" type="button">恢復預設規格</button>
         <label for="summary-instructions">自訂摘要指引</label>
@@ -292,9 +298,10 @@
             </div>
             <label for="manual-custom-topic">或建立自訂正式主題</label>
             <div class="manual-topic-action-row">
-              <input id="manual-custom-topic" type="text" maxlength="6" placeholder="優先 2～4 字，最多 6 字" autocomplete="off">
+              <input id="manual-custom-topic" type="text" maxlength="6" placeholder="優先 2～4 字，最多 6 字" autocomplete="off" aria-describedby="manual-custom-topic-hint">
               <button id="manual-use-custom" class="button secondary compact" type="button">使用自訂主題</button>
             </div>
+            <p id="manual-custom-topic-hint" class="hint">自訂主題最多 6 字，建議使用 2～4 字。</p>
           </div>
         </details>
         <hr>

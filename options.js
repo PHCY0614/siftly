@@ -41,6 +41,7 @@ const topicMax = document.querySelector("#topic-max");
 const keywordCount = document.querySelector("#keyword-count");
 const summaryMin = document.querySelector("#summary-min");
 const summaryMax = document.querySelector("#summary-max");
+const outputLanguage = document.querySelector("#output-language");
 const outputSpecSummary = document.querySelector("#output-spec-summary");
 const summaryInstructions = document.querySelector("#summary-instructions");
 const summaryInstructionsStatus = document.querySelector("#summary-instructions-status");
@@ -87,6 +88,11 @@ let topicOrganizerPreferences = {};
 let savedNotionTarget = "";
 let savedDataSourceId = "";
 let savedSummaryInstructions = "";
+let currentOutputLanguage = "zh-TW";
+let outputSpecs = {
+  "zh-TW": null,
+  en: null
+};
 let summaryInstructionsLoaded = false;
 let summaryInstructionsBusy = false;
 let settingsBusy = false;
@@ -147,25 +153,167 @@ for (const select of [
   geminiModel,
   vertexModel,
   requestTimeout,
-  manualExistingTopic
+  manualExistingTopic,
+  outputLanguage
 ]) enhanceSelect(select);
 
-const DEFAULT_OUTPUT_SPEC = Object.freeze({
-  titleMax: 12,
-  topicMin: 1,
-  topicMax: 3,
-  keywordCount: 5,
-  summaryMin: 100,
-  summaryMax: 250
+const DEFAULT_OUTPUT_SPECS = Object.freeze({
+  "zh-TW": Object.freeze({
+    titleMax: 12,
+    topicMin: 1,
+    topicMax: 3,
+    keywordCount: 5,
+    summaryMin: 100,
+    summaryMax: 250
+  }),
+  en: Object.freeze({
+    titleMax: 10,
+    topicMin: 1,
+    topicMax: 3,
+    keywordCount: 5,
+    summaryMin: 80,
+    summaryMax: 150
+  })
 });
-const OUTPUT_SPEC_LIMITS = Object.freeze({
-  titleMax: Object.freeze({ input: titleMax, min: 6, max: 30 }),
-  topicMin: Object.freeze({ input: topicMin, min: 1, max: 5 }),
-  topicMax: Object.freeze({ input: topicMax, min: 1, max: 5 }),
-  keywordCount: Object.freeze({ input: keywordCount, min: 3, max: 10 }),
-  summaryMin: Object.freeze({ input: summaryMin, min: 50, max: 500 }),
-  summaryMax: Object.freeze({ input: summaryMax, min: 100, max: 800 })
+const OUTPUT_SPEC_LIMITS_BY_LANGUAGE = Object.freeze({
+  "zh-TW": Object.freeze({
+    titleMax: Object.freeze({ input: titleMax, min: 6, max: 30 }),
+    topicMin: Object.freeze({ input: topicMin, min: 1, max: 5 }),
+    topicMax: Object.freeze({ input: topicMax, min: 1, max: 5 }),
+    keywordCount: Object.freeze({ input: keywordCount, min: 3, max: 10 }),
+    summaryMin: Object.freeze({ input: summaryMin, min: 50, max: 500 }),
+    summaryMax: Object.freeze({ input: summaryMax, min: 100, max: 800 })
+  }),
+  en: Object.freeze({
+    titleMax: Object.freeze({ input: titleMax, min: 4, max: 20 }),
+    topicMin: Object.freeze({ input: topicMin, min: 1, max: 5 }),
+    topicMax: Object.freeze({ input: topicMax, min: 1, max: 5 }),
+    keywordCount: Object.freeze({ input: keywordCount, min: 3, max: 10 }),
+    summaryMin: Object.freeze({ input: summaryMin, min: 30, max: 300 }),
+    summaryMax: Object.freeze({ input: summaryMax, min: 50, max: 800 })
+  })
 });
+let DEFAULT_OUTPUT_SPEC = DEFAULT_OUTPUT_SPECS["zh-TW"];
+let OUTPUT_SPEC_LIMITS = OUTPUT_SPEC_LIMITS_BY_LANGUAGE["zh-TW"];
+
+/*
+ * The two specs are drafts in this page. The background keeps outputSpec as
+ * the Traditional Chinese spec and englishOutputSpec as the English spec;
+ * switching language only changes which draft is visible.
+ */
+function normalizedOutputLanguage(value) {
+  return value === "en" ? "en" : "zh-TW";
+}
+
+function outputLanguageLabel(language = currentOutputLanguage) {
+  return normalizedOutputLanguage(language) === "en" ? "英文" : "正體中文";
+}
+
+function specLimitsForLanguage(language = currentOutputLanguage) {
+  return OUTPUT_SPEC_LIMITS_BY_LANGUAGE[normalizedOutputLanguage(language)];
+}
+
+function normalizeOutputSpecValue(value, language = currentOutputLanguage) {
+  const normalizedLanguage = normalizedOutputLanguage(language);
+  const defaults = DEFAULT_OUTPUT_SPECS[normalizedLanguage];
+  const limits = specLimitsForLanguage(normalizedLanguage);
+  const result = {};
+  for (const [key, limit] of Object.entries(limits)) {
+    const parsed = Number(value?.[key]);
+    result[key] = Number.isFinite(parsed)
+      ? Math.max(limit.min, Math.min(limit.max, Math.round(parsed)))
+      : defaults[key];
+  }
+  return result;
+}
+
+function setVisibleOutputSpec(spec, language = currentOutputLanguage) {
+  const normalizedLanguage = normalizedOutputLanguage(language);
+  currentOutputLanguage = normalizedLanguage;
+  DEFAULT_OUTPUT_SPEC = DEFAULT_OUTPUT_SPECS[normalizedLanguage];
+  OUTPUT_SPEC_LIMITS = specLimitsForLanguage(normalizedLanguage);
+  const normalized = normalizeOutputSpecValue(spec, normalizedLanguage);
+  for (const [key, limit] of Object.entries(OUTPUT_SPEC_LIMITS)) {
+    limit.input.min = String(limit.min);
+    limit.input.max = String(limit.max);
+    limit.input.value = String(normalized[key]);
+  }
+  updateOutputSpecSummary();
+  updateTopicLanguageUi(
+    organizerData ? topicSnapshotOutputLanguage(organizerData, "zh-TW") : currentOutputLanguage
+  );
+  updateOutputSpecLanguageUi();
+}
+
+function saveVisibleOutputSpecDraft() {
+  outputSpecs[currentOutputLanguage] = normalizeFormOutputSpec(true);
+  return outputSpecs[currentOutputLanguage];
+}
+
+function switchOutputLanguage(language) {
+  const nextLanguage = normalizedOutputLanguage(language);
+  saveVisibleOutputSpecDraft();
+  currentOutputLanguage = nextLanguage;
+  setVisibleOutputSpec(outputSpecs[nextLanguage] || DEFAULT_OUTPUT_SPECS[nextLanguage], nextLanguage);
+}
+
+function currentOutputSpec() {
+  return normalizeFormOutputSpec(false);
+}
+
+function updateTopicLanguageUi(language = currentOutputLanguage) {
+  const english = normalizedOutputLanguage(language) === "en";
+  const maxLength = english ? "100" : "6";
+  const placeholder = english ? "優先 1～3 個單字，最多 60 個字元" : "優先 2～4 字，最多 6 字";
+  for (const input of [manualCustomTopic]) {
+    if (!input) continue;
+    input.maxLength = Number(maxLength);
+    input.placeholder = placeholder;
+  }
+  for (const input of document.querySelectorAll(".topic-group input[type=\"text\"]")) {
+    input.maxLength = Number(maxLength);
+    input.setAttribute("aria-label", english ? "標準主題名稱（英文）" : "標準主題名稱");
+  }
+  const manualHint = document.querySelector("#manual-custom-topic-hint");
+  if (manualHint) {
+    manualHint.textContent = english
+      ? "英文自訂主題最多 60 個字元，建議使用 1～3 個單字。"
+      : "自訂主題最多 6 字，建議使用 2～4 字。";
+  }
+}
+
+function updateOutputSpecLanguageUi() {
+  const english = currentOutputLanguage === "en";
+  const labels = {
+    "title-max-label": english ? "標題上限（4～20 單字）" : "標題上限（最高 30 字）",
+    "topic-min-label": english ? "主題最少（最高 5 個）" : "主題最少（最高 5 個）",
+    "topic-max-label": english ? "主題最多（最高 5 個）" : "主題最多（最高 5 個）",
+    "keyword-count-label": english ? "關鍵字數量（最高 10 個）" : "關鍵字數量（最高 10 個）",
+    "summary-min-label": english ? "摘要最少（30～300 單字）" : "摘要最少（最高 500 字）",
+    "summary-max-label": english ? "摘要最多（50～800 單字）" : "摘要最多（最高 800 字）"
+  };
+  for (const [id, text] of Object.entries(labels)) {
+    const element = document.querySelector(`#${id}`);
+    if (element) element.textContent = text;
+  };
+  const rangeHint = document.querySelector("#output-spec-range-hint");
+  if (rangeHint) {
+    rangeHint.textContent = english
+      ? "可調範圍：標題 4～20 單字｜主題最少與最多各 1～5 個｜關鍵字 3～10 個｜摘要最少 30～300 單字、最多 50～800 單字。"
+      : "可調範圍：標題上限 6～30 字｜主題最少與最多各 1～5 個｜關鍵字 3～10 個｜摘要最少 50～500 字、最多 100～800 字。";
+  }
+}
+
+function outputSpecUnit(language = currentOutputLanguage) {
+  return normalizedOutputLanguage(language) === "en" ? "單字" : "字";
+}
+
+function outputSpecSummaryText(spec, language = currentOutputLanguage) {
+  const unit = outputSpecUnit(language);
+  return normalizedOutputLanguage(language) === "en"
+    ? `目前英文分析規格：標題最多 ${spec.titleMax} ${unit}｜主題 ${spec.topicMin}～${spec.topicMax} 個｜關鍵字 ${spec.keywordCount} 個｜摘要 ${spec.summaryMin}～${spec.summaryMax} ${unit}`
+    : `目前分析規格：標題最多 ${spec.titleMax} ${unit}｜主題 ${spec.topicMin}～${spec.topicMax} 個｜關鍵字 ${spec.keywordCount} 個｜摘要 ${spec.summaryMin}～${spec.summaryMax} ${unit}`;
+}
 
 function clampOutputValue(key, value) {
   const limit = OUTPUT_SPEC_LIMITS[key];
@@ -517,7 +665,7 @@ function setImportMode(value) {
 }
 
 function settingsFromForm() {
-  const outputSpec = normalizeFormOutputSpec(true);
+  saveVisibleOutputSpecDraft();
   return {
     aiProvider: aiProvider.value,
     geminiKey: geminiKey.value.trim(),
@@ -526,7 +674,9 @@ function settingsFromForm() {
     vertexModel: vertexModel.value.trim(),
     excludedPersonTerms: excludedPersonTerms.value,
     preferExistingTopics: preferExistingTopics.checked,
-    outputSpec,
+    outputSpec: normalizeOutputSpecValue(outputSpecs["zh-TW"], "zh-TW"),
+    englishOutputSpec: normalizeOutputSpecValue(outputSpecs.en, "en"),
+    outputLanguage: currentOutputLanguage,
     summaryInstructions: savedSummaryInstructions,
     requestTimeoutMinutes: Number(requestTimeout.value),
     notionTarget: notionTarget.value.trim(),
@@ -789,14 +939,13 @@ async function loadConfig() {
     rememberGeminiKey.checked = Boolean(config.rememberGeminiKey);
     rememberVertexKey.checked = Boolean(config.rememberVertexKey);
     excludedPersonTerms.value = (config.excludedPersonTerms ?? []).join("\n");
-    const spec = config.outputSpec || DEFAULT_OUTPUT_SPEC;
-    titleMax.value = spec.titleMax;
-    topicMin.value = spec.topicMin;
-    topicMax.value = spec.topicMax;
-    keywordCount.value = spec.keywordCount;
-    summaryMin.value = spec.summaryMin;
-    summaryMax.value = spec.summaryMax;
-    updateOutputSpecSummary();
+    outputSpecs = {
+      "zh-TW": normalizeOutputSpecValue(config.outputSpec, "zh-TW"),
+      en: normalizeOutputSpecValue(config.englishOutputSpec, "en")
+    };
+    currentOutputLanguage = normalizedOutputLanguage(config.outputLanguage);
+    outputLanguage.value = currentOutputLanguage;
+    setVisibleOutputSpec(outputSpecs[currentOutputLanguage], currentOutputLanguage);
     savedSummaryInstructions = config.summaryInstructions || "";
     summaryInstructions.value = savedSummaryInstructions;
     summaryInstructionsLoaded = true;
@@ -1043,21 +1192,19 @@ clearButton.addEventListener("click", async () => {
 });
 
 aiProvider.addEventListener("change", updateProviderUi);
+outputLanguage.addEventListener("change", () => switchOutputLanguage(outputLanguage.value));
 
 // ==== Output-spec editing ====
-function currentOutputSpec() {
-  return normalizeFormOutputSpec(false);
-}
-
 function updateOutputSpecSummary() {
   const spec = currentOutputSpec();
-  outputSpecSummary.textContent = `目前分析規格：標題最多 ${spec.titleMax} 字｜主題 ${spec.topicMin}～${spec.topicMax} 個｜關鍵字 ${spec.keywordCount} 個｜摘要 ${spec.summaryMin}～${spec.summaryMax} 字`;
+  outputSpecSummary.textContent = outputSpecSummaryText(spec, currentOutputLanguage);
 }
 
 for (const [key, limit] of Object.entries(OUTPUT_SPEC_LIMITS)) {
   limit.input.addEventListener("input", () => {
+    const currentLimit = OUTPUT_SPEC_LIMITS[key];
     const value = Number(limit.input.value);
-    if (Number.isFinite(value) && value > limit.max) limit.input.value = String(limit.max);
+    if (Number.isFinite(value) && value > currentLimit.max) limit.input.value = String(currentLimit.max);
     updateOutputSpecSummary();
   });
   limit.input.addEventListener("change", () => {
@@ -1066,14 +1213,9 @@ for (const [key, limit] of Object.entries(OUTPUT_SPEC_LIMITS)) {
   });
 }
 document.querySelector("#reset-output-spec").addEventListener("click", () => {
-  titleMax.value = DEFAULT_OUTPUT_SPEC.titleMax;
-  topicMin.value = DEFAULT_OUTPUT_SPEC.topicMin;
-  topicMax.value = DEFAULT_OUTPUT_SPEC.topicMax;
-  keywordCount.value = DEFAULT_OUTPUT_SPEC.keywordCount;
-  summaryMin.value = DEFAULT_OUTPUT_SPEC.summaryMin;
-  summaryMax.value = DEFAULT_OUTPUT_SPEC.summaryMax;
+  setVisibleOutputSpec(DEFAULT_OUTPUT_SPECS[currentOutputLanguage], currentOutputLanguage);
   updateOutputSpecSummary();
-  showStatus("輸出規格已恢復預設值；儲存後生效。", "info");
+  showStatus(`${outputLanguageLabel()}輸出規格已恢復預設值；儲存後生效。`, "info");
 });
 // ==== Summary writing preferences ====
 function updateSummaryInstructionsStatus() {
@@ -1393,6 +1535,25 @@ function updateRollbackButton() {
   document.querySelector("#rollback-topics").disabled = !organizerData?.canRollback;
 }
 
+function topicSnapshotOutputLanguage(snapshot, fallback = "zh-TW") {
+  const explicit = snapshot?.outputLanguage;
+  if (explicit === "en" || explicit === "zh-TW") return explicit;
+  const values = [
+    ...(snapshot?.unclassified ?? []),
+    ...(snapshot?.groups ?? []).flatMap(group => [
+      group?.standardTopic,
+      group?.standard_topic,
+      ...(group?.aliases ?? [])
+    ])
+  ].filter(value => typeof value === "string");
+  // Old snapshots have no language marker. Latin names or multi-word English
+  // labels should keep the English topic input constraints for compatibility.
+  const hasLongLatinLabel = values.some(value =>
+    /[A-Za-z]/.test(value) && value.replace(/\s+/g, "").length > 6
+  );
+  return hasLongLatinLabel ? "en" : normalizedOutputLanguage(fallback);
+}
+
 /**
  * One organizer group card: standard name (may become confirmed AI 主題),
  * alias checkboxes for AI 暫定主題, skip via SKIP_TOPIC_GROUP. Draft
@@ -1496,12 +1657,14 @@ function renderOrganizer() {
     organizerSummary.textContent = organizerSummaryText(unclassified);
     updateApplyProgressUi();
     updateRollbackButton();
+    updateTopicLanguageUi(topicSnapshotOutputLanguage(organizerData));
     return;
   }
   organizerSummary.textContent = organizerSummaryText(unclassified);
   topicGroups.append(...organizerData.groups.map(group => renderOrganizerGroupCard(group)));
   updateApplyProgressUi();
   updateRollbackButton();
+  updateTopicLanguageUi(topicSnapshotOutputLanguage(organizerData));
 }
 
 // ==== Manual unclassified-topic resolution ====

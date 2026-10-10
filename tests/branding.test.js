@@ -79,7 +79,7 @@ function testSettingsPageCopy() {
   assert.match(html, /這個工具會用到的欄位，不會影響你的內容與現有欄位。/);
   assert.match(
     html,
-    /按「測試連線並準備欄位」會補齊缺少的欄位；缺少「整理狀態」時會先詢問，接著請在 Notion 把文章標成「待分析」，才能開始整理。分析後工具會先寫暫定主題，正式主題須你確認整理後才寫入。/
+    /按「測試連線並準備欄位」會補齊缺少的欄位；完成後可在上方「準備待分析文章」選取文章加入分析，不必逐篇回到 Notion 設定狀態。分析後工具會先寫暫定主題，正式主題須你確認整理後才寫入。/
   );
   assert.doesNotMatch(html, /<small>(?:rich_text|select|multi_select)<\/small>/);
   assert.doesNotMatch(html, /必要欄位檢查通過後/);

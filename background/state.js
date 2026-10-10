@@ -32,13 +32,13 @@ function sanitizeHistoryItem(item = {}) {
   };
 }
 
-function normalizeShortNameList(value) {
+function normalizeShortNameList(value, maxCharacters = 50) {
   const source = Array.isArray(value)
     ? value
     : String(value ?? "").split(/[\n\r,，、]+/u);
   const seen = new Set();
   return source.reduce((result, item) => {
-    const name = S.cleanText(item).slice(0, 50);
+    const name = S.cleanText(item).slice(0, maxCharacters);
     const key = name.normalize("NFKC").toLocaleLowerCase("zh-Hant-TW");
     if (!name || seen.has(key) || result.length >= 80) return result;
     seen.add(key);
@@ -132,18 +132,42 @@ function normalizeTopicReview(review) {
   const remainingCandidates = Array.isArray(review.remainingCandidates)
     ? review.remainingCandidates
     : Array.isArray(result.topic_candidates) ? result.topic_candidates : legacyCandidate(result);
+  const outputLanguage = topicSessionLanguage({ ...review, remainingCandidates });
   return {
     ...review,
-    approvedNewTopics: normalizeShortNameList(review.approvedNewTopics ?? []),
+    outputLanguage,
+    approvedNewTopics: normalizeShortNameList(review.approvedNewTopics ?? [], outputLanguage === "en" ? 100 : 50),
     candidateTotal: Number(review.candidateTotal) || remainingCandidates.length,
     decisions: Array.isArray(review.decisions) ? review.decisions : [],
     remainingCandidates,
-    skippedCandidates: normalizeShortNameList(review.skippedCandidates ?? []),
-    originalFinalTopics: normalizeShortNameList(review.originalFinalTopics ?? []),
+    skippedCandidates: normalizeShortNameList(review.skippedCandidates ?? [], outputLanguage === "en" ? 100 : 50),
+    originalFinalTopics: normalizeShortNameList(review.originalFinalTopics ?? [],
+      (review.originalFinalTopics ?? []).some(name => /[A-Za-z]/.test(String(name)) && S.visibleLength(name) > 6) ? 100 : 50),
     selectedExistingTopics: Array.isArray(review.selectedExistingTopics)
       ? review.selectedExistingTopics
       : Array.isArray(result.ai_topics) ? result.ai_topics : []
   };
+}
+
+// Review language belongs to its generated snapshot, rather than later settings.
+function topicSessionLanguage(session) {
+  if (session?.outputLanguage) return P.normalizeOutputLanguage(session.outputLanguage);
+  const names = [
+    ...(session?.remainingCandidates ?? []).map(item => item.name),
+    ...(session?.groups ?? []).map(item => item.standardTopic ?? item.standard_topic),
+    ...(session?.unclassified ?? [])
+  ];
+  return names.some(name => /[A-Za-z]/.test(String(name)) && S.visibleLength(name) > 6) ? "en" : "zh-TW";
+}
+
+function topicLabelLanguage(name, fallback = "zh-TW") {
+  // Old Chinese provisionals may coexist with newly generated English topics.
+  if (/\p{Script=Han}/u.test(String(name)) && !/[A-Za-z]/.test(String(name))) return "zh-TW";
+  return P.normalizeOutputLanguage(fallback);
+}
+
+function topicLengthDescription(language) {
+  return language === "en" ? "1～4 個英文單字，最多 60 個可見字元" : "2～6 字，並優先使用 2～4 字";
 }
 
 // ==== State initialization and persistence ====
@@ -251,6 +275,9 @@ async function readConfig() {
   delete merged.openRouterPaidConfirmedModel;
   delete merged.rememberOpenRouterKey;
   merged.outputSpec = P.normalizeOutputSpec(merged.outputSpec);
+  merged.outputLanguage = P.normalizeOutputLanguage(merged.outputLanguage);
+  merged.englishOutputSpec = P.normalizeOutputSpec(merged.englishOutputSpec, "en");
+  currentOutputLanguage = merged.outputLanguage;
   merged.summaryInstructions = P.normalizeSummaryInstructions(merged.summaryInstructions);
   merged.discardedTopicNames = normalizeDiscardedTopicNames(merged.discardedTopicNames);
   merged.topicDictionary = normalizeTopicDictionary(merged.topicDictionary);

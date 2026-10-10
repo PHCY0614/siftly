@@ -45,8 +45,10 @@ async function resolveTopicReview(action, replacementTopic = "", customTopic = "
   let currentOptions = validTopicOptions(await readTopicOptions(config, token));
   const byKey = new Map(currentOptions.map(option => [N.topicKey(option.name), option.name]));
   const candidate = S.cleanText(currentCandidate.name);
-  if (action === "approve" && !G.isOrganizerTopicLabel(candidate)) {
-    throw new AppError("建立的新正式主題必須為 2～6 字；若候選名稱不合規，請改用自訂主題", {
+  const outputLanguage = topicSessionLanguage(review);
+  const candidateLanguage = topicLabelLanguage(candidate, outputLanguage);
+  if (action === "approve" && !G.isOrganizerTopicLabel(candidate, candidateLanguage)) {
+    throw new AppError(`建立的新正式主題必須為 ${topicLengthDescription(candidateLanguage)}；若候選名稱不合規，請改用自訂主題`, {
       code: "TOPIC_CANDIDATE_INVALID"
     });
   }
@@ -68,8 +70,8 @@ async function resolveTopicReview(action, replacementTopic = "", customTopic = "
     topicDecision = "replaced_with_existing";
   } else if (action === "custom") {
     const custom = S.cleanText(customTopic);
-    if (!G.isOrganizerTopicLabel(custom)) {
-      throw new AppError("自訂正式主題必須為 2～6 字，並優先使用 2～4 字", {
+    if (!G.isOrganizerTopicLabel(custom, outputLanguage)) {
+      throw new AppError(`自訂正式主題必須為 ${topicLengthDescription(outputLanguage)}`, {
         code: "CUSTOM_TOPIC_INVALID"
       });
     }
@@ -250,6 +252,7 @@ async function reviewCurrentPageTopics(pageId) {
   };
   const topicReview = normalizeTopicReview({
     version: 2,
+    outputLanguage: provisionalTopics.some(name => /[A-Za-z]/.test(name) && S.visibleLength(name) > 6) ? "en" : "zh-TW",
     item,
     result: { ai_topics: provisionalTopics },
     requestedAt: new Date().toISOString(),

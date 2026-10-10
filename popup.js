@@ -18,6 +18,46 @@ const reviewExisting = document.querySelector("#review-existing");
 const replacementTopic = document.querySelector("#replacement-topic");
 const customTopic = document.querySelector("#custom-topic");
 const rememberTopicMapping = document.querySelector("#remember-topic-mapping");
+const customTopicHint = document.querySelector("#custom-topic-hint");
+
+function normalizedOutputLanguage(value) {
+  return value === "en" ? "en" : "zh-TW";
+}
+
+function inferTopicLanguage(snapshot, fallback = "zh-TW") {
+  if (!snapshot) return normalizedOutputLanguage(fallback);
+  const explicit = snapshot?.outputLanguage;
+  if (explicit === "en" || explicit === "zh-TW") return explicit;
+  const values = [
+    snapshot?.candidate
+  ].filter(value => typeof value === "string");
+  const hasLongLatinLabel = values.some(value =>
+    /[A-Za-z]/.test(value) && value.replace(/\s+/g, "").length > 6
+  );
+  return hasLongLatinLabel ? "en" : "zh-TW";
+}
+
+function statusOutputLanguage() {
+  return normalizedOutputLanguage(
+    lastStatus?.outputLanguage
+      || lastStatus?.config?.outputLanguage
+      || lastConfig?.outputLanguage
+      || lastConfig?.config?.outputLanguage
+  );
+}
+
+function applyTopicLanguageUi(language) {
+  const english = normalizedOutputLanguage(language) === "en";
+  customTopic.maxLength = english ? 100 : 6;
+  customTopic.placeholder = english
+    ? "優先 1～3 個單字，最多 60 個字元"
+    : "優先 2～4 字，最多 6 字";
+  if (customTopicHint) {
+    customTopicHint.textContent = english
+      ? "英文自訂主題最多 60 個字元，建議使用 1～3 個單字。"
+      : "自訂主題最多 6 字，建議使用 2～4 字。";
+  }
+}
 
 // ==== Shared custom select ====
 /**
@@ -315,6 +355,8 @@ function renderTopicReview(review) {
     renderedReviewKey = "";
     return;
   }
+
+  applyTopicLanguageUi(inferTopicLanguage(review, statusOutputLanguage()));
 
   const item = review.item || {};
   reviewPageTitle.textContent = item.title || "未命名文章";

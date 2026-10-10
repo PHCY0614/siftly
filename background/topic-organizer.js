@@ -185,6 +185,8 @@ function canRetryTopicOrganizerWithoutSchema(error) {
  */
 async function requestOrganizerGroups({ aiCandidates, config, controller }) {
   const { apiKey, model, provider } = await activeAiContext(config);
+  const outputLanguage = P.normalizeOutputLanguage(config.outputLanguage);
+  const promptOptions = { outputLanguage };
   const aiInput = aiCandidates.map(candidate => ({ name: candidate.name }));
   const candidateNames = aiCandidates.map(candidate => candidate.name);
   const warnings = [];
@@ -193,7 +195,7 @@ async function requestOrganizerGroups({ aiCandidates, config, controller }) {
     response = await timedAiRequest(
       provider,
       model,
-      G.buildTopicOrganizerRequest(aiInput, [], model),
+      G.buildTopicOrganizerRequest(aiInput, [], model, promptOptions),
       { apiKey, signal: controller.signal, timeoutMinutes: config.requestTimeoutMinutes }
     );
   } catch (error) {
@@ -202,7 +204,7 @@ async function requestOrganizerGroups({ aiCandidates, config, controller }) {
     response = await timedAiRequest(
       provider,
       model,
-      G.buildTopicOrganizerCompatibilityRequest(aiInput, [], model),
+      G.buildTopicOrganizerCompatibilityRequest(aiInput, [], model, promptOptions),
       { apiKey, signal: controller.signal, timeoutMinutes: config.requestTimeoutMinutes }
     );
   }
@@ -212,7 +214,7 @@ async function requestOrganizerGroups({ aiCandidates, config, controller }) {
   try {
     const parsed = G.parseJsonCandidate(response);
     invalidRaw = parsed.raw;
-    checked = G.validateTopicOrganizer(parsed.value, candidateNames, []);
+    checked = G.validateTopicOrganizer(parsed.value, candidateNames, [], outputLanguage);
   } catch (error) {
     if (error?.nonRetryable) throw error;
     invalidRaw = error?.rawOutput || "";
@@ -228,21 +230,22 @@ async function requestOrganizerGroups({ aiCandidates, config, controller }) {
         checked.errors,
         candidateNames,
         [],
-        model
+        model,
+        promptOptions
       ),
       { apiKey, signal: controller.signal, timeoutMinutes: config.requestTimeoutMinutes }
     );
     let repaired;
     try {
       repaired = G.parseJsonCandidate(repairedResponse);
-      checked = G.validateTopicOrganizer(repaired.value, candidateNames, []);
+      checked = G.validateTopicOrganizer(repaired.value, candidateNames, [], outputLanguage);
     } catch (error) {
       if (error?.nonRetryable) throw error;
       checked = { ok: false, errors: [error?.message || "修復結果不是有效 JSON"] };
     }
     if (!checked.ok) {
       warnings.push(`模型兩次都未回傳可用格式，本批候選已全部保留未分類：${checked.errors.join("；")}`);
-      checked = G.validateTopicOrganizer({ groups: [], unclassified_topics: candidateNames }, candidateNames, []);
+      checked = G.validateTopicOrganizer({ groups: [], unclassified_topics: candidateNames }, candidateNames, [], outputLanguage);
     }
   }
   warnings.push(...(checked.warnings ?? []));
@@ -260,6 +263,8 @@ async function requestOrganizerGroups({ aiCandidates, config, controller }) {
  */
 async function requestTopicStandardMatches({ groups, standards, config, controller, promptOptions }) {
   if (!groups.length || !standards.length) return { groups, warnings: [] };
+  const outputLanguage = P.normalizeOutputLanguage(config.outputLanguage);
+  promptOptions = { ...promptOptions, outputLanguage };
   const { apiKey, model, provider } = await activeAiContext(config);
   const matcherGroups = groups.map((group, index) => ({
     group_id: `group_${index + 1}`,
@@ -293,7 +298,7 @@ async function requestTopicStandardMatches({ groups, standards, config, controll
   try {
     const parsed = G.parseJsonCandidate(response);
     invalidRaw = parsed.raw;
-    checked = G.validateTopicStandardMatches(parsed.value, matcherGroups, standards);
+    checked = G.validateTopicStandardMatches(parsed.value, matcherGroups, standards, outputLanguage);
   } catch (error) {
     if (error?.nonRetryable) throw error;
     invalidRaw = error?.rawOutput || "";
@@ -316,14 +321,14 @@ async function requestTopicStandardMatches({ groups, standards, config, controll
     );
     try {
       const repaired = G.parseJsonCandidate(repairedResponse);
-      checked = G.validateTopicStandardMatches(repaired.value, matcherGroups, standards);
+      checked = G.validateTopicStandardMatches(repaired.value, matcherGroups, standards, outputLanguage);
     } catch (error) {
       if (error?.nonRetryable) throw error;
       checked = { ok: false, errors: [error?.message || "修復結果不是有效 JSON"] };
     }
     if (!checked.ok) {
       warnings.push(`既有主題比對兩次都未回傳可用格式，已保留第一階段建議名稱：${checked.errors.join("；")}`);
-      checked = G.validateTopicStandardMatches({ matches: [] }, matcherGroups, standards);
+      checked = G.validateTopicStandardMatches({ matches: [] }, matcherGroups, standards, outputLanguage);
     }
   }
   warnings.push(...(checked.warnings ?? []));
@@ -409,7 +414,9 @@ async function requestTopicStandardMatches({ groups, standards, config, controll
         };
       }
       // Stage-2 suggestion line (UI label「建議：」). Keep「與既有主題「X」」wording.
-      let compareDetail = matchReason || "未找到合適的既有主題，保留第一階段建議名稱。";
+      let compareDetail = matchReason || (outputLanguage === "en"
+        ? "No suitable existing topic was found; keep the first-stage proposed name."
+        : "未找到合適的既有主題，保留第一階段建議名稱。");
       if (!/與既有主題[「『]/.test(compareDetail) && /與[「『]/.test(compareDetail)) {
         compareDetail = compareDetail.replace(/與([「『])/g, "與既有主題$1");
       }
@@ -475,6 +482,7 @@ async function prepareTopicOrganizer() {
     if (!candidates.length) {
       stateCache.topicOrganizer = {
         version: TOPIC_ORGANIZER_CACHE_VERSION,
+        outputLanguage: P.normalizeOutputLanguage(config.outputLanguage),
         status: "review",
         scannedAt: new Date().toISOString(),
         candidates: [], pages, groups: [], unclassified: [], manualSkipped: [],
@@ -488,7 +496,7 @@ async function prepareTopicOrganizer() {
     const organizerWarnings = [];
     const standards = topicOrganizerStandards(options, pages);
     const preferExistingTopics = topicOrganizerPreference(config);
-    const organizerPromptOptions = { preferExistingTopics };
+    const organizerPromptOptions = { preferExistingTopics, outputLanguage: P.normalizeOutputLanguage(config.outputLanguage) };
     // Confirmed mappings: 說明 must describe theme content/scope (definition), never process meta.
     const dictionaryDefs = new Map(
       normalizeTopicDictionary(config.topicDictionary).map(item => [
@@ -543,6 +551,7 @@ async function prepareTopicOrganizer() {
     const reviewGroups = buildOrganizerReviewGroups(groups, candidates);
     stateCache.topicOrganizer = {
       version: TOPIC_ORGANIZER_CACHE_VERSION,
+      outputLanguage: P.normalizeOutputLanguage(config.outputLanguage),
       status: "review",
       scannedAt: new Date().toISOString(),
       candidates,
@@ -600,6 +609,7 @@ function topicOrganizerForUi() {
   const candidatesByKey = new Map((organizer.candidates ?? []).map(candidate => [N.topicKey(candidate.name), candidate]));
   return {
     status: organizer.status,
+    outputLanguage: topicSessionLanguage(organizer),
     scannedAt: organizer.scannedAt,
     candidateCount: organizer.candidates?.length ?? 0,
     occurrenceCount: (organizer.candidates ?? []).reduce((total, candidate) => total + (Number(candidate.occurrences) || 0), 0),
@@ -740,9 +750,10 @@ async function applyTopicOrganizerGroups(groupsInput = []) {
   const optionKeys = new Set(options.map(item => N.topicKey(item.name)));
   const newStandards = uniqueTopicNames(selected.map(group => group.standardTopic))
     .filter(name => !optionKeys.has(N.topicKey(name)));
-  const invalidNewStandards = newStandards.filter(name => !G.isOrganizerTopicLabel(name));
+  const outputLanguage = topicSessionLanguage(organizer);
+  const invalidNewStandards = newStandards.filter(name => !G.isOrganizerTopicLabel(name, outputLanguage));
   if (invalidNewStandards.length) {
-    throw new AppError(`主題整理新增的分類名稱必須為 2～6 字，並優先使用 2～4 字：${invalidNewStandards.join("、")}`, {
+    throw new AppError(`主題整理新增的分類名稱必須為 ${topicLengthDescription(outputLanguage)}：${invalidNewStandards.join("、")}`, {
       code: "ORGANIZER_TOPIC_LENGTH_INVALID"
     });
   }
@@ -934,9 +945,11 @@ async function resolveOrganizerUnclassified(candidateName, action, replacementTo
   let options = validTopicOptions(await readTopicOptions(config, token));
   const byKey = new Map(options.map(option => [N.topicKey(option.name), option.name]));
   let selectedTopic = "";
+  const outputLanguage = topicSessionLanguage(organizer);
   if (action === "approve") {
-    if (!G.isOrganizerTopicLabel(candidate)) {
-      throw new AppError("建立的新正式主題必須為 2～6 字，請改用自訂名稱", { code: "MANUAL_TOPIC_INVALID" });
+    const candidateLanguage = topicLabelLanguage(candidate, outputLanguage);
+    if (!G.isOrganizerTopicLabel(candidate, candidateLanguage)) {
+      throw new AppError(`建立的新正式主題必須為 ${topicLengthDescription(candidateLanguage)}，請改用自訂名稱`, { code: "MANUAL_TOPIC_INVALID" });
     }
     selectedTopic = byKey.get(N.topicKey(candidate)) || candidate;
   } else if (action === "replace") {
@@ -946,8 +959,8 @@ async function resolveOrganizerUnclassified(candidateName, action, replacementTo
     }
   } else if (action === "custom") {
     const custom = S.cleanText(customTopic);
-    if (!G.isOrganizerTopicLabel(custom)) {
-      throw new AppError("自訂正式主題必須為 2～6 字，並優先使用 2～4 字", { code: "MANUAL_CUSTOM_INVALID" });
+    if (!G.isOrganizerTopicLabel(custom, outputLanguage)) {
+      throw new AppError(`自訂正式主題必須為 ${topicLengthDescription(outputLanguage)}`, { code: "MANUAL_CUSTOM_INVALID" });
     }
     selectedTopic = byKey.get(N.topicKey(custom)) || custom;
   } else if (action !== "discard") {

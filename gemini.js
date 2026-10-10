@@ -32,8 +32,10 @@
   const CHUNK_TEXT_LIMIT = 78000;
   const MAX_OUTPUT_TOKENS = 8192;
 
-  function analysisJsonSchema(outputSpec = prompt.DEFAULT_OUTPUT_SPEC) {
-    const spec = prompt.normalizeOutputSpec(outputSpec);
+  function analysisJsonSchema(outputSpec = prompt.DEFAULT_OUTPUT_SPEC, outputLanguage = "zh-TW") {
+    const language = prompt.normalizeOutputLanguage(outputLanguage);
+    const spec = prompt.normalizeOutputSpec(outputSpec, language);
+    const english = language === "en";
     return {
     type: "object",
     additionalProperties: false,
@@ -44,20 +46,26 @@
       "ai_summary"
     ],
     properties: {
-      ai_title: { type: "string", description: `${spec.titleMax} 個可見字元以內的精簡繁體中文標題` },
+      ai_title: { type: "string", description: english
+        ? `A concise English title of at most ${spec.titleMax} words and 300 visible characters`
+        : `${spec.titleMax} 個可見字元以內的精簡繁體中文標題` },
       ai_topics: {
         type: "array",
         minItems: spec.topicMin,
         maxItems: spec.topicMax,
-        items: { type: "string", description: "由正文直接支持、可跨文章分類，且能涵蓋核心關鍵字或主要摘要內容的完整主題概念" }
+        items: { type: "string", description: english
+          ? "A directly supported reusable topic of 1 to 4 English words and no more than 60 visible characters"
+          : "由正文直接支持、可跨文章分類，且能涵蓋核心關鍵字或主要摘要內容的完整主題概念" }
       },
       ai_keywords: {
         type: "array",
         minItems: spec.keywordCount,
         maxItems: spec.keywordCount,
-        items: { type: "string", description: "一個不可再拆分或合併的搜尋概念" }
+        items: { type: "string", description: english ? "One coherent searchable concept" : "一個不可再拆分或合併的搜尋概念" }
       },
-      ai_summary: { type: "string", description: `${spec.summaryMin} 至 ${spec.summaryMax} 字、依原文脈絡順序撰寫且直接進入核心內容的摘要` }
+      ai_summary: { type: "string", description: english
+        ? `A direct English summary of ${spec.summaryMin} to ${spec.summaryMax} words, following the source context and order`
+        : `${spec.summaryMin} 至 ${spec.summaryMax} 字、依原文脈絡順序撰寫且直接進入核心內容的摘要` }
     }
     };
   }
@@ -190,7 +198,8 @@
    * not send HTTP or write Notion.
    */
   function buildAnalysisRequest(userPrompt, model = DEFAULT_MODEL, options = {}) {
-    return generationPayload(prompt.buildSystemPrompt(options.customPrompt, options.outputSpec, options.summaryInstructions), userPrompt, analysisJsonSchema(options.outputSpec), {
+    const language = prompt.normalizeOutputLanguage(options.outputLanguage);
+    return generationPayload(prompt.buildSystemPrompt(options.customPrompt, options.outputSpec, options.summaryInstructions, language), userPrompt, analysisJsonSchema(options.outputSpec, language), {
       maxOutputTokens: MAX_OUTPUT_TOKENS,
       model
     });
@@ -203,10 +212,11 @@
    * this when candidateText marks the first response nonRetryable or empty.
    */
   function buildRepairRequest(invalidOutput, errors, model = DEFAULT_MODEL, options = {}) {
+    const language = prompt.normalizeOutputLanguage(options.outputLanguage);
     return generationPayload(
-      prompt.buildSystemPrompt(options.customPrompt, options.outputSpec, options.summaryInstructions),
-      prompt.buildRepairPrompt(invalidOutput, errors),
-      analysisJsonSchema(options.outputSpec),
+      prompt.buildSystemPrompt(options.customPrompt, options.outputSpec, options.summaryInstructions, language),
+      prompt.buildRepairPrompt(invalidOutput, errors, options),
+      analysisJsonSchema(options.outputSpec, language),
       { maxOutputTokens: 4096, model }
     );
   }
@@ -215,10 +225,10 @@
    * First long-article chunk-note call. Schema is details/terms/transitions
    * notes, not a full analysis object and not Notion topics.
    */
-  function buildChunkRequest(chunkText, index, total, model = DEFAULT_MODEL) {
+  function buildChunkRequest(chunkText, index, total, model = DEFAULT_MODEL, options = {}) {
     return generationPayload(
-      prompt.CHUNK_SYSTEM_PROMPT,
-      prompt.buildChunkPrompt(chunkText, index, total),
+      prompt.buildChunkSystemPrompt(options.outputLanguage),
+      prompt.buildChunkPrompt(chunkText, index, total, options),
       CHUNK_JSON_SCHEMA,
       { maxOutputTokens: MAX_OUTPUT_TOKENS, model }
     );
@@ -228,10 +238,10 @@
    * One-shot chunk-note repair payload. Same CHUNK_JSON_SCHEMA as the first
    * chunk request. extractChunkNote sends at most one of these.
    */
-  function buildChunkRepairRequest(invalidOutput, errors, model = DEFAULT_MODEL) {
+  function buildChunkRepairRequest(invalidOutput, errors, model = DEFAULT_MODEL, options = {}) {
     return generationPayload(
-      prompt.CHUNK_SYSTEM_PROMPT,
-      prompt.buildChunkRepairPrompt(invalidOutput, errors),
+      prompt.buildChunkSystemPrompt(options.outputLanguage),
+      prompt.buildChunkRepairPrompt(invalidOutput, errors, options),
       CHUNK_JSON_SCHEMA,
       { maxOutputTokens: 4096, model }
     );
@@ -248,8 +258,9 @@
       model = existingStandards;
       existingStandards = [];
     }
+    const language = prompt.normalizeOutputLanguage(options.outputLanguage);
     return generationPayload(
-      prompt.TOPIC_ORGANIZER_SYSTEM_PROMPT,
+      prompt.buildTopicOrganizerSystemPrompt(language),
       prompt.buildTopicOrganizerPrompt(candidates, existingStandards, options.allCandidates ?? candidates, options),
       TOPIC_ORGANIZER_JSON_SCHEMA,
       { maxOutputTokens: MAX_OUTPUT_TOKENS, model }
@@ -268,10 +279,11 @@
       model = existingStandards;
       existingStandards = [];
     }
+    const language = prompt.normalizeOutputLanguage(options.outputLanguage);
     const thinkingConfig = thinkingConfigForModel(model);
     return {
       systemInstruction: {
-        parts: [{ text: prompt.TOPIC_ORGANIZER_SYSTEM_PROMPT }]
+        parts: [{ text: prompt.buildTopicOrganizerSystemPrompt(language) }]
       },
       contents: [{
         role: "user",
@@ -302,10 +314,11 @@
       model = existingStandards;
       existingStandards = [];
     }
+    const language = prompt.normalizeOutputLanguage(options.outputLanguage);
     const thinkingConfig = thinkingConfigForModel(model);
     return {
       systemInstruction: {
-        parts: [{ text: prompt.TOPIC_ORGANIZER_SYSTEM_PROMPT }]
+        parts: [{ text: prompt.buildTopicOrganizerSystemPrompt(language) }]
       },
       contents: [{
         role: "user",
@@ -327,8 +340,9 @@
 
   /** Compare fixed provisional groups with the confirmed taxonomy. */
   function buildTopicStandardMatcherRequest(groups, existingStandards = [], model = DEFAULT_MODEL, options = {}) {
+    const language = prompt.normalizeOutputLanguage(options.outputLanguage);
     return generationPayload(
-      prompt.TOPIC_STANDARD_MATCHER_SYSTEM_PROMPT,
+      prompt.buildTopicStandardMatcherSystemPrompt(language),
       prompt.buildTopicStandardMatcherPrompt(groups, existingStandards, options),
       TOPIC_STANDARD_MATCHER_JSON_SCHEMA,
       { maxOutputTokens: MAX_OUTPUT_TOKENS, model }
@@ -337,10 +351,11 @@
 
   /** Schema-free fallback for models that reject responseJsonSchema. */
   function buildTopicStandardMatcherCompatibilityRequest(groups, existingStandards = [], model = DEFAULT_MODEL, options = {}) {
+    const language = prompt.normalizeOutputLanguage(options.outputLanguage);
     const thinkingConfig = thinkingConfigForModel(model);
     return {
       systemInstruction: {
-        parts: [{ text: prompt.TOPIC_STANDARD_MATCHER_SYSTEM_PROMPT }]
+        parts: [{ text: prompt.buildTopicStandardMatcherSystemPrompt(language) }]
       },
       contents: [{
         role: "user",
@@ -363,10 +378,11 @@
     model = DEFAULT_MODEL,
     options = {}
   ) {
+    const language = prompt.normalizeOutputLanguage(options.outputLanguage);
     const thinkingConfig = thinkingConfigForModel(model);
     return {
       systemInstruction: {
-        parts: [{ text: prompt.TOPIC_STANDARD_MATCHER_SYSTEM_PROMPT }]
+        parts: [{ text: prompt.buildTopicStandardMatcherSystemPrompt(language) }]
       },
       contents: [{
         role: "user",
@@ -470,7 +486,8 @@
    * New standard_topic values must pass isOrganizerTopicLabel unless they
    * already match existingStandards. Does not write confirmed AI 主題.
    */
-  function validateTopicOrganizer(value, candidateNames = [], existingStandards = []) {
+  function validateTopicOrganizer(value, candidateNames = [], existingStandards = [], outputLanguage = "zh-TW") {
+    const language = prompt.normalizeOutputLanguage(outputLanguage);
     value = normalizeTopicOrganizerShape(value);
     const errors = [];
     const warnings = [];
@@ -520,7 +537,7 @@
         markUnclassified(sourceTopics);
         continue;
       }
-      if (!existingStandard && !isOrganizerTopicLabel(standard)) {
+      if (!existingStandard && !isOrganizerTopicLabel(standard, language)) {
         stats.invalidName += 1;
         markUnclassified(sourceTopics);
         continue;
@@ -562,7 +579,9 @@
     if (stats.malformed) warnings.push(`已略過 ${stats.malformed} 組格式不正確的建議`);
     if (stats.unknown) warnings.push(`已忽略 ${stats.unknown} 個不在本批候選中的名稱`);
     if (stats.duplicate) warnings.push(`已忽略 ${stats.duplicate} 個重複分組的來源`);
-    if (stats.invalidName) warnings.push(`${stats.invalidName} 組新名稱不符合 2～6 字規格，來源已保留未分類`);
+    if (stats.invalidName) warnings.push(language === "en"
+      ? `${stats.invalidName} new topic names did not meet the 1–4 word and 60-character limits; sources were left unclassified`
+      : `${stats.invalidName} 組新名稱不符合 2～6 字規格，來源已保留未分類`);
     if (stats.singleNew) warnings.push(`${stats.singleNew} 個單一來源沒有既有分類可沿用，已保留未分類`);
     if (stats.missingReason) warnings.push(`${stats.missingReason} 組缺少建議說明，來源已保留未分類`);
     const unclassified = [...allowed.entries()]
@@ -596,7 +615,8 @@
    * malformed, unknown, duplicate, or missing decision safely keeps the
    * first-stage proposed name instead of dropping or regrouping sources.
    */
-  function validateTopicStandardMatches(value, groups = [], existingStandards = []) {
+  function validateTopicStandardMatches(value, groups = [], existingStandards = [], outputLanguage = "zh-TW") {
+    const language = prompt.normalizeOutputLanguage(outputLanguage);
     value = normalizeTopicStandardMatcherShape(value);
     const warnings = [];
     if (!value || typeof value !== "object" || !Array.isArray(value.matches)) {
@@ -614,7 +634,9 @@
       group_id: groupId,
       decision: "keep_proposed",
       matched_topic: "",
-      reason: "未取得有效的既有主題比對，保留第一階段建議名稱。",
+      reason: language === "en"
+        ? "No valid existing-topic match was returned; the proposed topic is retained."
+        : "未取得有效的既有主題比對，保留第一階段建議名稱。",
       confidence: "low"
     });
     for (const entry of value.matches) {
@@ -639,7 +661,9 @@
           group_id: groupId,
           decision,
           matched_topic: "",
-          reason: reason || "與既有主題比對後範圍不相同，保留第一階段建議名稱。",
+          reason: reason || (language === "en"
+            ? "The retrieval scope differs from the existing topics; the proposed topic is retained."
+            : "與既有主題比對後範圍不相同，保留第一階段建議名稱。"),
           confidence
         });
         continue;
@@ -873,11 +897,13 @@
    * visible characters, no newline or ｜. No 2-character minimum. Confirmed
    * AI 主題 names are not checked here.
    */
-  function isAtomicTopicLabel(value) {
+  function isAtomicTopicLabel(value, outputLanguage = "zh-TW") {
     const name = shared.cleanText(value);
-    return Boolean(name)
-      && shared.visibleLength(name) <= 5
-      && !/[\r\n|｜]/u.test(name);
+    if (!name || /[\r\n|｜]/u.test(name)) return false;
+    if (prompt.normalizeOutputLanguage(outputLanguage) === "en") {
+      return shared.visibleLength(name) <= 60 && shared.wordCount(name) >= 1 && shared.wordCount(name) <= 4;
+    }
+    return shared.visibleLength(name) <= 5;
   }
 
   /**
@@ -886,13 +912,14 @@
    * bypasses this check when the standard matches an existing topic.
    * Background approve/custom guards call this strict function directly.
    */
-  function isOrganizerTopicLabel(value) {
+  function isOrganizerTopicLabel(value, outputLanguage = "zh-TW") {
     const name = shared.cleanText(value);
     const length = shared.visibleLength(name);
-    return Boolean(name)
-      && length >= 2
-      && length <= 6
-      && !/[\r\n|｜]/u.test(name);
+    if (!name || /[\r\n|｜]/u.test(name)) return false;
+    if (prompt.normalizeOutputLanguage(outputLanguage) === "en") {
+      return length <= 60 && shared.wordCount(name) >= 1 && shared.wordCount(name) <= 4;
+    }
+    return length >= 2 && length <= 6;
   }
 
   function excludedPersonMap(values = []) {
@@ -932,9 +959,12 @@
     existingTopics = [],
     allowTopicProposals = true,
     excludedPersonTerms = [],
-    outputSpec = prompt.DEFAULT_OUTPUT_SPEC
+    outputSpec = prompt.DEFAULT_OUTPUT_SPEC,
+    outputLanguage = "zh-TW"
   ) {
-    const spec = prompt.normalizeOutputSpec(outputSpec);
+    const language = prompt.normalizeOutputLanguage(outputLanguage);
+    const english = language === "en";
+    const spec = prompt.normalizeOutputSpec(outputSpec, language);
     const errors = [];
     if (!value || typeof value !== "object" || Array.isArray(value)) {
       return { errors: ["最外層必須是 JSON 物件"], ok: false, value: null };
@@ -954,7 +984,11 @@
 
     const title = typeof value.ai_title === "string" ? shared.cleanText(value.ai_title) : "";
     if (!title) errors.push("AI 標題不可空白");
-    if (shared.visibleLength(title) > spec.titleMax) errors.push(`AI 標題超過 ${spec.titleMax} 字`);
+    if (english) {
+      if (!shared.wordCount(title)) errors.push("AI title must contain English words");
+      if (shared.wordCount(title) > spec.titleMax) errors.push(`AI title exceeds ${spec.titleMax} words`);
+      if (shared.visibleLength(title) > 300) errors.push("AI title exceeds 300 visible characters");
+    } else if (shared.visibleLength(title) > spec.titleMax) errors.push(`AI 標題超過 ${spec.titleMax} 字`);
     if (/^[A-Za-z]$/.test(title)) errors.push("AI 標題不可使用人物匿名代稱");
 
     const knownTopics = existingTopicMap(existingTopics);
@@ -964,8 +998,10 @@
       topics = topics.map(item => knownTopics.get(topicKey(item)) || item);
       if (topics.length < spec.topicMin || topics.length > spec.topicMax) errors.push(`AI 主題必須有 ${spec.topicMin} 至 ${spec.topicMax} 個`);
       if (topics.some(item => !item)) errors.push("AI 主題不可包含空白項目");
-      if (topics.some(item => !isAtomicTopicLabel(item))) {
-        errors.push("每個 AI 暫定主題必須是最多 5 字的完整概念，且不可包含換行或「｜」");
+      if (topics.some(item => !isAtomicTopicLabel(item, language))) {
+        errors.push(english
+          ? "Each provisional topic must contain 1 to 4 English words, no more than 60 visible characters, and no line breaks or ｜"
+          : "每個 AI 暫定主題必須是最多 5 字的完整概念，且不可包含換行或「｜」");
       }
       if (hasDuplicates(topics)) errors.push("AI 主題不可重複");
       const unknownTopics = topics.filter(item => !knownTopics.has(topicKey(item)));
@@ -980,6 +1016,7 @@
       if (keywords.length !== spec.keywordCount) errors.push(`AI 關鍵字必須恰好 ${spec.keywordCount} 個`);
       if (keywords.some(item => !item)) errors.push("AI 關鍵字不可包含空白項目");
       if (keywords.some(item => item.length > 100)) errors.push("AI 關鍵字單項不可超過 100 字");
+      if (english && keywords.some(item => !shared.wordCount(item))) errors.push("AI keywords must use English words");
       if (hasDuplicates(keywords)) errors.push("AI 關鍵字不可重複");
       if (keywords.some(item => /[\r\n|｜]/u.test(item))) {
         errors.push("AI 關鍵字不可包含換行或「｜」分隔字元");
@@ -991,10 +1028,13 @@
     }
 
     const summary = typeof value.ai_summary === "string" ? shared.cleanText(value.ai_summary) : "";
-    const summaryLength = shared.visibleLength(summary);
+    const summaryLength = english ? shared.wordCount(summary) : shared.visibleLength(summary);
     if (!summary) errors.push("AI 摘要不可空白");
-    if (summaryLength < spec.summaryMin || summaryLength > spec.summaryMax) errors.push(`AI 摘要必須為 ${spec.summaryMin} 至 ${spec.summaryMax} 字，目前為 ${summaryLength} 字`);
-    if (/^(?:本文|文章|此文|本篇|這篇文章)/u.test(summary)) {
+    if (english) {
+      if (summaryLength < spec.summaryMin || summaryLength > spec.summaryMax) errors.push(`AI summary must contain ${spec.summaryMin} to ${spec.summaryMax} words; received ${summaryLength}`);
+      if (shared.visibleLength(summary) > 12000) errors.push("AI summary exceeds 12,000 visible characters");
+    } else if (summaryLength < spec.summaryMin || summaryLength > spec.summaryMax) errors.push(`AI 摘要必須為 ${spec.summaryMin} 至 ${spec.summaryMax} 字，目前為 ${summaryLength} 字`);
+    if (!english && /^(?:本文|文章|此文|本篇|這篇文章)/u.test(summary)) {
       errors.push("AI 摘要不可用本文、文章、此文、本篇或這篇文章作為引介開頭");
     }
 

@@ -171,6 +171,7 @@ function recordSuccess(item, extra = {}) {
 
 function publicStatus() {
   return {
+    outputLanguage: currentOutputLanguage,
     current: stateCache.current,
     databaseCheck: stateCache.databaseCheck,
     failed: stateCache.failed,
@@ -364,6 +365,7 @@ async function processItem(item) {
     if (isSingleReview) {
       stateCache.topicReview = normalizeTopicReview({
         version: 2,
+        outputLanguage: P.normalizeOutputLanguage(config.outputLanguage),
         item,
         result,
         requestedAt: new Date().toISOString(),
