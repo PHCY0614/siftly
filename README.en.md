@@ -4,7 +4,7 @@
 
 [正體中文（臺灣）](README.md)
 
-Let AI do the first pass. You make the final call.
+Contents to summaries. Clutter to categories.
 
 Articles keep piling up in Notion, but they rarely get organised. Over time the database becomes a long list nobody scrolls through, and finding one piece depends on remembering it.
 
