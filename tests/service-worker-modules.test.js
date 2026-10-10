@@ -33,6 +33,8 @@ function testManifestAndEntrypoint() {
 function testImportMap() {
   const imported = importedScripts();
   assert.deepEqual(imported, [
+    "i18n/en.js",
+    "i18n/index.js",
     "shared.js",
     "prompt.js",
     "notion.js",
@@ -72,6 +74,7 @@ function testCriticalWiring() {
     "LIST_UNANALYZED_ARTICLES",
     "SET_ARTICLE_ANALYSIS_STATUS",
     "SAVE_SETTINGS",
+    "SET_UI_LANGUAGE",
     "TEST_NOTION_CONNECTION",
     "TEST_AI_CONNECTION",
     "PREPARE_NOTION_FIELDS",

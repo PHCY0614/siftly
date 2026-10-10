@@ -1,5 +1,8 @@
 "use strict";
 
+// Interface text in the saved language; i18n/page.js has already translated the static page.
+const { t } = globalThis.AnalyzerI18n;
+
 // ==== DOM references and local UI state ====
 const form = document.querySelector("#settings-form");
 const statusBox = document.querySelector("#status");
@@ -69,7 +72,6 @@ const manualTopicImpact = document.querySelector("#manual-topic-impact");
 const manualTopicNote = document.querySelector("#manual-topic-note");
 const manualExistingTopic = document.querySelector("#manual-existing-topic");
 const manualCustomTopic = document.querySelector("#manual-custom-topic");
-const modelSummary = document.querySelector("#model-summary");
 const saveButton = document.querySelector("#save");
 const connectNotionButtons = [...document.querySelectorAll("#connect-notion, #connect-notion-manual")];
 const loadModelsButton = document.querySelector("#load-models");
@@ -85,6 +87,7 @@ const setupNextText = document.querySelector("#setup-next-text");
 const setupNextAction = document.querySelector("#setup-next-action");
 const fieldsStatus = document.querySelector("#fields-status");
 const prepareFieldsButton = document.querySelector("#prepare-fields");
+const uiLanguage = document.querySelector("#ui-language");
 const fieldDetails = document.querySelector("#field-details");
 const testAiButton = document.querySelector("#test-ai");
 const notionSetupGuide = document.querySelector("#notion-setup-guide");
@@ -133,11 +136,13 @@ function closeEnhancedSelects(except = null) {
  */
 function enhanceSelect(select) {
   if (!select || enhancedSelects.has(select)) return enhancedSelects.get(select);
-  const extraRootClass = ["gemini-model", "vertex-model", "request-timeout", "manual-existing-topic"]
-    .includes(select.id) ? "custom-select--regular" : "";
+  const extraRootClass = select.id === "ui-language"
+    ? "custom-select--compact"
+    : ["gemini-model", "vertex-model", "request-timeout", "manual-existing-topic"]
+      .includes(select.id) ? "custom-select--regular" : "";
   const controller = AnalyzerSelect.enhance(select, {
     extraRootClass,
-    emptyLabel: "請選擇",
+    emptyLabel: t("請選擇"),
     matchNativeState: true,
     attachDocumentListeners: false,
     onToggle(controller, opening) {
@@ -153,7 +158,10 @@ function syncEnhancedSelects() {
   for (const controller of enhancedSelects.values()) controller.sync();
 }
 
+// Set before the select is enhanced, so its custom trigger starts on the current language.
+uiLanguage.value = globalThis.AnalyzerI18n.getLanguage();
 for (const select of [
+  uiLanguage,
   aiProvider,
   notionDataSourceSelect,
   geminiModel,
@@ -212,7 +220,7 @@ function normalizedOutputLanguage(value) {
 }
 
 function outputLanguageLabel(language = currentOutputLanguage) {
-  return normalizedOutputLanguage(language) === "en" ? "英文" : "正體中文";
+  return normalizedOutputLanguage(language) === "en" ? t("英文") : t("正體中文");
 }
 
 function specLimitsForLanguage(language = currentOutputLanguage) {
@@ -270,55 +278,55 @@ function currentOutputSpec() {
 function updateTopicLanguageUi(language = currentOutputLanguage) {
   const english = normalizedOutputLanguage(language) === "en";
   const maxLength = english ? "100" : "6";
-  const placeholder = english ? "優先 1～3 個單字，最多 60 個字元" : "優先 2～4 字，最多 6 字";
   for (const input of [manualCustomTopic]) {
     if (!input) continue;
     input.maxLength = Number(maxLength);
-    input.placeholder = placeholder;
   }
   for (const input of document.querySelectorAll(".topic-group input[type=\"text\"]")) {
     input.maxLength = Number(maxLength);
-    input.setAttribute("aria-label", english ? "標準主題名稱（英文）" : "標準主題名稱");
+    input.setAttribute("aria-label", english ? t("標準主題名稱（英文）") : t("標準主題名稱"));
   }
   const manualHint = document.querySelector("#manual-custom-topic-hint");
   if (manualHint) {
     manualHint.textContent = english
-      ? "英文自訂主題最多 60 個字元，建議使用 1～3 個單字。"
-      : "自訂主題最多 6 字，建議使用 2～4 字。";
+      ? t("英文自訂主題最多 60 個字元，建議使用 1～3 個單字。")
+      : t("自訂主題最多 6 字，建議使用 2～4 字。");
   }
 }
 
 function updateOutputSpecLanguageUi() {
-  const english = currentOutputLanguage === "en";
+  const limits = specLimitsForLanguage();
+  const range = (key, unit) => t("{min}～{max} {unit}", { min: limits[key].min, max: limits[key].max, unit });
+  const length = outputSpecUnit();
   const labels = {
-    "title-max-label": english ? "標題上限（4～20 單字）" : "標題上限（最高 30 字）",
-    "topic-min-label": english ? "主題最少（最高 5 個）" : "主題最少（最高 5 個）",
-    "topic-max-label": english ? "主題最多（最高 5 個）" : "主題最多（最高 5 個）",
-    "keyword-count-label": english ? "關鍵字數量（最高 10 個）" : "關鍵字數量（最高 10 個）",
-    "summary-min-label": english ? "摘要最少（30～300 單字）" : "摘要最少（最高 500 字）",
-    "summary-max-label": english ? "摘要最多（50～800 單字）" : "摘要最多（最高 800 字）"
+    "title-max-label": t("標題上限（{range}）", { range: range("titleMax", length) }),
+    "topic-min-label": t("主題最少（{range}）", { range: range("topicMin", t("個")) }),
+    "topic-max-label": t("主題最多（{range}）", { range: range("topicMax", t("個")) }),
+    "keyword-count-label": t("關鍵字數量（{range}）", { range: range("keywordCount", t("個")) }),
+    "summary-min-label": t("摘要最少（{range}）", { range: range("summaryMin", length) }),
+    "summary-max-label": t("摘要最多（{range}）", { range: range("summaryMax", length) })
   };
   for (const [id, text] of Object.entries(labels)) {
     const element = document.querySelector(`#${id}`);
     if (element) element.textContent = text;
-  };
-  const rangeHint = document.querySelector("#output-spec-range-hint");
-  if (rangeHint) {
-    rangeHint.textContent = english
-      ? "可調範圍：標題 4～20 單字｜主題最少與最多各 1～5 個｜關鍵字 3～10 個｜摘要最少 30～300 單字、最多 50～800 單字。"
-      : "可調範圍：標題上限 6～30 字｜主題最少與最多各 1～5 個｜關鍵字 3～10 個｜摘要最少 50～500 字、最多 100～800 字。";
   }
 }
 
 function outputSpecUnit(language = currentOutputLanguage) {
-  return normalizedOutputLanguage(language) === "en" ? "單字" : "字";
+  return normalizedOutputLanguage(language) === "en" ? t("單字") : t("字");
 }
 
 function outputSpecSummaryText(spec, language = currentOutputLanguage) {
   const unit = outputSpecUnit(language);
-  return normalizedOutputLanguage(language) === "en"
-    ? `目前英文分析規格：標題最多 ${spec.titleMax} ${unit}｜主題 ${spec.topicMin}～${spec.topicMax} 個｜關鍵字 ${spec.keywordCount} 個｜摘要 ${spec.summaryMin}～${spec.summaryMax} ${unit}`
-    : `目前分析規格：標題最多 ${spec.titleMax} ${unit}｜主題 ${spec.topicMin}～${spec.topicMax} 個｜關鍵字 ${spec.keywordCount} 個｜摘要 ${spec.summaryMin}～${spec.summaryMax} ${unit}`;
+  return t("目前分析規格：標題最多 {titleMax} {unit}｜主題 {topicMin}～{topicMax} 個｜關鍵字 {keywordCount} 個｜摘要 {summaryMin}～{summaryMax} {unit}", {
+    titleMax: spec.titleMax,
+    unit,
+    topicMin: spec.topicMin,
+    topicMax: spec.topicMax,
+    keywordCount: spec.keywordCount,
+    summaryMin: spec.summaryMin,
+    summaryMax: spec.summaryMax
+  });
 }
 
 function clampOutputValue(key, value) {
@@ -347,7 +355,7 @@ function normalizeFormOutputSpec(writeBack = false) {
 async function send(type, extra = {}) {
   const response = await chrome.runtime.sendMessage({ type, ...extra });
   if (!response?.ok) {
-    const error = new Error(response?.error?.message || "操作失敗");
+    const error = new Error(response?.error?.message || t("操作失敗"));
     error.code = response?.error?.code || "UNEXPECTED";
     throw error;
   }
@@ -386,7 +394,7 @@ function renderArticleCandidates() {
     checkbox.type = "checkbox";
     checkbox.checked = articleSelectedIds.has(page.id);
     checkbox.disabled = settingsBusy || articleListBusy || articleActionBusy;
-    checkbox.setAttribute("aria-label", `選取文章：${page.title || "未命名文章"}`);
+    checkbox.setAttribute("aria-label", t("選取文章：{title}", { title: page.title || t("未命名文章") }));
     checkbox.addEventListener("change", () => {
       if (checkbox.checked) articleSelectedIds.add(page.id);
       else articleSelectedIds.delete(page.id);
@@ -403,16 +411,16 @@ function renderArticleCandidates() {
       link.href = safeUrl;
       link.target = "_blank";
       link.rel = "noreferrer";
-      link.textContent = page.title || "未命名文章";
+      link.textContent = page.title || t("未命名文章");
       title.append(link);
     } else {
-      title.textContent = page.title || "未命名文章";
+      title.textContent = page.title || t("未命名文章");
     }
     const preview = document.createElement("p");
     preview.className = "article-candidate__preview";
     preview.textContent = page.previewUnavailable
-      ? "預覽目前無法載入"
-      : (page.preview || "目前沒有預覽文字");
+      ? t("預覽目前無法載入")
+      : (page.preview || t("目前沒有預覽文字"));
     content.append(title, preview);
     row.append(checkbox, content);
     return row;
@@ -450,13 +458,13 @@ function updateArticlePreparationUi() {
   clearArticleSelectionButton.disabled = busy || selectedCount === 0;
   addArticlesToAnalysisButton.disabled = busy || selectedCount === 0 || !hasSavedTarget;
   markArticlesNoAnalysisButton.disabled = busy || selectedCount === 0 || !hasSavedTarget;
-  articleSelectedCount.textContent = `已選 ${selectedCount} 篇`;
+  articleSelectedCount.textContent = t("已選 {selectedCount} 篇", { selectedCount });
   const loadedCount = articlePages.length;
   selectAllArticles.checked = loadedCount > 0 && selectedCount === loadedCount;
   selectAllArticles.indeterminate = selectedCount > 0 && selectedCount < loadedCount;
 
   if (!hasSavedTarget && articlePreparation.open && !busy) {
-    setArticlePreparationStatus("請先儲存目前選擇的 Notion 資料庫，再載入文章。", "error");
+    setArticlePreparationStatus(t("請先按「連接資料庫」。"), "error");
   }
 }
 
@@ -468,15 +476,18 @@ function clearArticleCandidates(message = "") {
   articleHasMore = false;
   articleListLoaded = false;
   articleDataSourceId = "";
-  articlePreparationSummary.textContent = "開啟後會載入最近 10 篇尚未整理的文章。";
+  articlePreparationSummary.textContent = "";
   setArticlePreparationStatus(message);
   renderArticleCandidates();
 }
 
 function updateArticlePreparationSummary() {
   articlePreparationSummary.textContent = articlePages.length
-    ? `已載入 ${articlePages.length} 篇尚未整理文章${articlePages.length >= MAX_ARTICLE_CANDIDATES ? "（已達上限）" : ""}。`
-    : "目前找不到尚未整理的文章。";
+    ? t("已載入 {count} 篇尚未整理文章{limitNote}。", {
+      count: articlePages.length,
+      limitNote: articlePages.length >= MAX_ARTICLE_CANDIDATES ? t("（已達上限）") : ""
+    })
+    : t("目前找不到尚未整理的文章。");
 }
 
 function normalizeArticlePages(pages) {
@@ -491,11 +502,11 @@ async function requestArticleCandidates(payload, generation) {
 async function loadArticleCandidates(reset = false) {
   if (articleListBusy || articleActionBusy) return;
   if (!articleTargetIsSaved()) {
-    setArticlePreparationStatus("請先儲存目前選擇的 Notion 資料庫，再載入文章。", "error");
+    setArticlePreparationStatus(t("請先按「連接資料庫」。"), "error");
     return;
   }
   if (!reset && !articleHasMore) return;
-  if (reset) clearArticleCandidates("正在載入尚未整理的文章…");
+  if (reset) clearArticleCandidates(t("載入中…"));
 
   const generation = articlePreparationGeneration;
   const pageSize = Number(articlePageSize.value) === 50 ? 50 : 10;
@@ -507,7 +518,7 @@ async function loadArticleCandidates(reset = false) {
   }
   articleListBusy = true;
   setBusy(true);
-  if (!reset) setArticlePreparationStatus("正在載入更多尚未整理的文章…");
+  if (!reset) setArticlePreparationStatus(t("載入中…"));
   try {
     const result = await requestArticleCandidates(payload, generation);
     if (!result || generation !== articlePreparationGeneration || !articleTargetIsSaved()) return;
@@ -524,7 +535,7 @@ async function loadArticleCandidates(reset = false) {
     articleHasMore = Boolean(result.hasMore) && articlePages.length < MAX_ARTICLE_CANDIDATES;
     articleListLoaded = true;
     updateArticlePreparationSummary();
-    setArticlePreparationStatus(articlePages.length ? "請選取要處理的文章。" : "目前沒有可選取的文章。");
+    setArticlePreparationStatus(articlePages.length ? t("請選取要處理的文章。") : t("目前沒有可選取的文章。"));
     renderArticleCandidates();
   } catch (error) {
     if (generation === articlePreparationGeneration) {
@@ -548,7 +559,7 @@ function selectedArticlePages() {
 async function setSelectedArticleStatus(status) {
   if (articleListBusy || articleActionBusy) return;
   if (!articleTargetIsSaved()) {
-    setArticlePreparationStatus("請先儲存目前選擇的 Notion 資料庫，再處理文章。", "error");
+    setArticlePreparationStatus(t("請先按「連接資料庫」。"), "error");
     return;
   }
   const selected = selectedArticlePages();
@@ -556,7 +567,7 @@ async function setSelectedArticleStatus(status) {
   const generation = articlePreparationGeneration;
   const dataSourceId = articleDataSourceId || articleSavedDataSourceId();
   if (!dataSourceId) {
-    setArticlePreparationStatus("找不到已保存的資料庫來源，請先按「連接資料庫」。", "error");
+    setArticlePreparationStatus(t("請先按「連接資料庫」。"), "error");
     return;
   }
   articleActionBusy = true;
@@ -569,7 +580,7 @@ async function setSelectedArticleStatus(status) {
     for (let start = 0; start < selected.length; start += 50) {
       if (generation !== articlePreparationGeneration) return;
       const chunk = selected.slice(start, start + 50);
-      setArticlePreparationStatus(`正在處理文章 ${Math.min(start + chunk.length, selected.length)}／${selected.length}…`);
+      setArticlePreparationStatus(t("正在處理文章 {value}／{selectedCount}…", { value: Math.min(start + chunk.length, selected.length), selectedCount: selected.length }));
       const result = await send("SET_ARTICLE_ANALYSIS_STATUS", {
         dataSourceId: articleDataSourceId || dataSourceId,
         pageIds: chunk.map(page => page.id),
@@ -594,15 +605,15 @@ async function setSelectedArticleStatus(status) {
       processed += chunk.length;
       renderArticleCandidates();
     }
-    const actionName = status === "pending" ? "已加入待分析" : "已標記不分析";
-    const resultParts = [`${actionName} ${updated} 篇`];
-    if (skipped) resultParts.push(`略過 ${skipped} 篇`);
-    if (failed) resultParts.push(`失敗 ${failed} 篇`);
-    setArticlePreparationStatus(`${resultParts.join("，")}。${failed ? "失敗項目仍保留勾選，可重試。" : ""}`);
+    const actionName = status === "pending" ? t("已加入待分析") : t("已標記不分析");
+    const resultParts = [t("{actionName} {updated} 篇", { actionName, updated })];
+    if (skipped) resultParts.push(t("略過 {skipped} 篇", { skipped }));
+    if (failed) resultParts.push(t("失敗 {failed} 篇", { failed }));
+    setArticlePreparationStatus(`${resultParts.join(t("，"))}${t("。")}${failed ? t("失敗項目仍保留勾選，可重試。") : ""}`);
   } catch (error) {
     if (generation === articlePreparationGeneration) {
       setArticlePreparationStatus(processed
-        ? `已處理 ${processed} 篇，後續處理失敗：${error.message}`
+        ? t("已處理 {processed} 篇，後續處理失敗：{message}", { processed, message: error.message })
         : error.message, "error");
     }
   } finally {
@@ -624,7 +635,7 @@ function closeImportModeMenu() {
 function setImportMode(value) {
   const normalized = value === "overwrite" ? "overwrite" : "merge";
   importMode.value = normalized;
-  importModeDisplay.textContent = normalized === "overwrite" ? "取代" : "合併";
+  importModeDisplay.textContent = normalized === "overwrite" ? t("取代") : t("合併");
   for (const option of importModeMenu.querySelectorAll(".split-btn__option")) {
     const selected = option.dataset.value === normalized;
     option.setAttribute("aria-selected", String(selected));
@@ -671,7 +682,7 @@ function activeModelElement() {
  * Shows the selected provider's key/model fields and hides the others, then
  * syncs enhanced selects. Sends no messages. Updates Gemini/Vertex settings
  * and model-select hidden state, the
- * load-models button label, and modelSummary. LIST_MODELS is sent by the
+ * load-models button label. LIST_MODELS is sent by the
  * scan/load-models button. Provider tests and AI calls stay in background.js.
  */
 function updateProviderUi() {
@@ -680,10 +691,7 @@ function updateProviderUi() {
   vertexSettings.hidden = provider !== "vertex";
   geminiModel.hidden = provider !== "gemini";
   vertexModel.hidden = provider !== "vertex";
-  loadModelsButton.textContent = provider === "vertex" ? "載入建議模型" : "掃描可用模型";
-  modelSummary.textContent = provider === "vertex"
-      ? "掃描前會先保存目前設定，再載入 Vertex AI 建議模型；按「儲存並測試 AI 連線」會使用免費的 Token 計數要求驗證所選模型與金鑰。"
-      : "掃描前會先保存目前設定，再讀取這把 Google AI Studio Key 可見、支援純文字 generateContent 的模型。";
+  loadModelsButton.textContent = provider === "vertex" ? t("載入建議模型") : t("掃描可用模型");
   syncEnhancedSelects();
 }
 
@@ -710,10 +718,10 @@ function formatTokenLimit(value) {
 
 function modelLabel(model, recommendedName) {
   const limits = [
-    Number.isFinite(model.inputTokenLimit) ? `輸入 ${formatTokenLimit(model.inputTokenLimit)}` : "",
-    Number.isFinite(model.outputTokenLimit) ? `輸出 ${formatTokenLimit(model.outputTokenLimit)}` : ""
+    Number.isFinite(model.inputTokenLimit) ? t("輸入 {value}", { value: formatTokenLimit(model.inputTokenLimit) }) : "",
+    Number.isFinite(model.outputTokenLimit) ? t("輸出 {value}", { value: formatTokenLimit(model.outputTokenLimit) }) : ""
   ].filter(Boolean).join("／");
-  const recommended = model.name === recommendedName ? "｜建議" : "";
+  const recommended = model.name === recommendedName ? t("｜建議") : "";
   const display = model.displayName && model.displayName !== model.name
     ? `${model.displayName}｜${model.name}`
     : model.name;
@@ -802,7 +810,7 @@ function renderNotionDataSources(dataSources, limitReached) {
 
   const placeholder = document.createElement("option");
   placeholder.value = "";
-  placeholder.textContent = "請選擇資料庫";
+  placeholder.textContent = t("請選擇資料庫");
   placeholder.disabled = true;
   const options = sources.map(source => {
     const option = document.createElement("option");
@@ -822,8 +830,8 @@ function renderNotionDataSources(dataSources, limitReached) {
     const current = document.createElement("option");
     current.value = inputTarget;
     current.textContent = inputId && savedTargetIds().includes(inputId)
-      ? "目前設定（未出現在載入結果中）"
-      : "目前輸入（未出現在載入結果中）";
+      ? t("目前設定（未出現在載入結果中）")
+      : t("目前輸入（未出現在載入結果中）");
     notionDataSourceSelect.append(current);
     notionDataSourceSelect.value = inputTarget;
   } else {
@@ -833,11 +841,11 @@ function renderNotionDataSources(dataSources, limitReached) {
 
   notionDataSourcePicker.hidden = !sources.length && !inputTarget;
   if (sources.length) {
-    const limitNote = limitReached ? " 已達 300 筆上限；其餘資料庫可使用重新整理或進階手動輸入。" : "";
-    showNotionDataSourceStatus(`已載入 ${sources.length} 個可用 Data Source。${limitNote}`, "success");
+    const limitNote = limitReached ? t(" 已達 300 筆上限；其餘資料庫可使用重新整理或進階手動輸入。") : "";
+    showNotionDataSourceStatus(t("已載入 {sourcesCount} 個可用 Data Source。{limitNote}", { sourcesCount: sources.length, limitNote }), "success");
   } else {
     showNotionDataSourceStatus(
-      "Token 可使用，但目前沒有找到已分享給此 Integration 的資料庫。請先在 Notion 將資料庫加入此 Integration，然後重新整理。",
+      t("找不到已分享給這個 Integration 的資料庫。請先在 Notion 加入連線，再重新整理。"),
       "info"
     );
   }
@@ -852,13 +860,13 @@ function renderNotionDataSources(dataSources, limitReached) {
 // requireNotionTarget is false for steps that do not touch Notion, such as testing the AI service.
 async function saveSettings(showConfirmation = true, requireNotionTarget = true) {
   if (requireNotionTarget && !notionTarget.value.trim()) {
-    throw new Error("請先選擇 Notion 資料庫，或在進階設定輸入資料庫網址或 Data Source ID");
+    throw new Error(t("請先選擇 Notion 資料庫，或在進階設定輸入資料庫網址或 Data Source ID"));
   }
-  if (!activeModelElement().value.trim()) throw new Error("請選擇分析模型");
+  if (!activeModelElement().value.trim()) throw new Error(t("請選擇分析模型"));
   const outputSpec = normalizeFormOutputSpec(true);
   updateOutputSpecSummary();
-  if (outputSpec.topicMin > outputSpec.topicMax) throw new Error("主題最少數不可大於主題最多數");
-  if (outputSpec.summaryMin > outputSpec.summaryMax) throw new Error("摘要最少字數不可大於摘要最多字數");
+  if (outputSpec.topicMin > outputSpec.topicMax) throw new Error(t("主題最少數不可大於主題最多數"));
+  if (outputSpec.summaryMin > outputSpec.summaryMax) throw new Error(t("摘要最少字數不可大於摘要最多字數"));
   const config = await send("SAVE_SETTINGS", { settings: settingsFromForm() });
   topicOrganizerPreferences = config.preferExistingTopicsByDataSource ?? topicOrganizerPreferences;
   preferExistingTopics.checked = Boolean(config.preferExistingTopics);
@@ -869,27 +877,27 @@ async function saveSettings(showConfirmation = true, requireNotionTarget = true)
   notionToken.value = "";
   geminiKey.value = "";
   vertexKey.value = "";
-  notionToken.placeholder = config.hasNotionToken ? "已設定（留白會保留）" : "secret_…";
-  geminiKey.placeholder = config.hasGeminiKey ? "已設定（留白會保留）" : "AIza…";
-  vertexKey.placeholder = config.hasVertexKey ? "已設定（留白會保留）" : "AIza…";
+  notionToken.placeholder = config.hasNotionToken ? t("已設定（留白會保留）") : "secret_…";
+  geminiKey.placeholder = config.hasGeminiKey ? t("已設定（留白會保留）") : "AIza…";
+  vertexKey.placeholder = config.hasVertexKey ? t("已設定（留白會保留）") : "AIza…";
   if (config.databaseChanged) {
     organizerClearedForPendingDbChange = false;
     organizerData = await send("GET_TOPIC_ORGANIZER");
     renderOrganizer();
-    clearArticleCandidates("資料庫已切換，請重新載入文章清單。");
+    clearArticleCandidates(t("資料庫已切換，請重新載入文章清單。"));
   } else {
     organizerClearedForPendingDbChange = false;
     updateArticlePreparationUi();
   }
   if (showConfirmation) {
     const queueNotice = config.databaseChanged
-      ? ` 已切換資料庫${config.clearedQueueCount ? `，並清除 ${config.clearedQueueCount} 篇舊佇列` : ""}，並清除主題整理建議；開始前請掃描資料庫。`
+      ? t(" 已切換資料庫，舊資料庫的佇列與整理建議已清除。")
       : "";
     const summaryDraftNotice = summaryInstructionsLoaded
       && summaryInstructions.value.trim() !== savedSummaryInstructions
-      ? " 摘要指引有未套用草稿，請按「套用」後才會保存。"
+      ? t(" 摘要指引有未套用草稿，請按「套用」後才會保存。")
       : "";
-    showStatus(`設定已儲存。金鑰欄已清空顯示，但目前設定仍保留。${queueNotice}${summaryDraftNotice}`, "success");
+    showStatus(`${t("設定已儲存。")}${queueNotice}${summaryDraftNotice}`, "success");
   }
   return config;
 }
@@ -929,9 +937,9 @@ async function loadConfig() {
     requestTimeout.value = String(config.requestTimeoutMinutes ?? 5);
     topicOrganizerPreferences = config.preferExistingTopicsByDataSource ?? {};
     preferExistingTopics.checked = Boolean(config.preferExistingTopics);
-    notionToken.placeholder = config.hasNotionToken ? "已設定（留白會保留）" : "secret_…";
-    geminiKey.placeholder = config.hasGeminiKey ? "已設定（留白會保留）" : "AIza…";
-    vertexKey.placeholder = config.hasVertexKey ? "已設定（留白會保留）" : "AIza…";
+    notionToken.placeholder = config.hasNotionToken ? t("已設定（留白會保留）") : "secret_…";
+    geminiKey.placeholder = config.hasGeminiKey ? t("已設定（留白會保留）") : "AIza…";
+    vertexKey.placeholder = config.hasVertexKey ? t("已設定（留白會保留）") : "AIza…";
     updateProviderUi();
     syncEnhancedSelects();
     updateDatabaseChangeWarning();
@@ -990,7 +998,7 @@ async function refreshOrganizerAfterTargetChange() {
 }
 
 notionTarget.addEventListener("input", () => {
-  clearArticleCandidates("資料庫選擇已變更，請先按「連接資料庫」後再載入文章。");
+  clearArticleCandidates(t("請先按「連接資料庫」。"));
   const key = compactTargetId(notionTarget.value);
   preferExistingTopics.checked = Boolean(key && topicOrganizerPreferences[key]);
   const matchingOption = [...notionDataSourceSelect.options]
@@ -1054,8 +1062,8 @@ loadNotionDataSourcesButton.addEventListener("click", async () => {
   if (notionDataSourcesLoading) return;
   notionDataSourcesLoading = true;
   setBusy(true);
-  loadNotionDataSourcesButton.textContent = "載入中…";
-  showNotionDataSourceStatus("正在向 Notion 載入已授權的資料庫…", "info");
+  loadNotionDataSourcesButton.textContent = t("載入中…");
+  showNotionDataSourceStatus(t("載入中…"), "info");
   try {
     const result = await send("LIST_NOTION_DATA_SOURCES", {
       notionToken: notionToken.value.trim()
@@ -1068,8 +1076,8 @@ loadNotionDataSourcesButton.addEventListener("click", async () => {
     notionDataSourcesLoading = false;
     setBusy(false);
     loadNotionDataSourcesButton.textContent = notionDataSourcesLoaded
-      ? "重新整理資料庫"
-      : "載入可用資料庫";
+      ? t("重新整理資料庫")
+      : t("載入可用資料庫");
   }
 });
 
@@ -1092,15 +1100,14 @@ form.addEventListener("submit", async event => {
  */
 loadModelsButton.addEventListener("click", async () => {
   setBusy(true);
-  showStatus("正在讀取目前服務商的可用模型…", "info", modelOperationStatus);
+  showStatus(t("載入中…"), "info", modelOperationStatus);
   try {
     await saveSettings(false);
     const result = await send("LIST_MODELS");
     const select = activeModelElement();
     const previous = select.value.trim();
     renderModels(select, result.models, previous, result.recommended);
-    modelSummary.textContent = `掃描前已保存目前設定。完成，共有 ${result.models.length} 個可選模型。目前選擇：${select.value}。`;
-    showStatus(`已完整掃描 ${result.models.length} 個可用文字模型。選好後請按「儲存並測試 AI 連線」。`, "success", modelOperationStatus);
+    showStatus(t("找到 {count} 個可用模型。", { count: result.models.length }), "success", modelOperationStatus);
   } catch (error) {
     showStatus(error.message, "error", modelOperationStatus);
   } finally {
@@ -1109,7 +1116,7 @@ loadModelsButton.addEventListener("click", async () => {
 });
 
 clearButton.addEventListener("click", async () => {
-  if (!confirm("確定要從這個 Chrome 使用者設定中清除 Notion Token 與所有 AI API Key 嗎？")) return;
+  if (!confirm(t("確定要從這個 Chrome 使用者設定中清除 Notion Token 與所有 AI API Key 嗎？"))) return;
   setBusy(true);
   try {
     await send("CLEAR_CREDENTIALS");
@@ -1122,7 +1129,7 @@ clearButton.addEventListener("click", async () => {
     rememberNotionToken.checked = false;
     rememberGeminiKey.checked = false;
     rememberVertexKey.checked = false;
-    showStatus("所有金鑰已清除。", "success");
+    showStatus(t("所有金鑰已清除。"), "success");
   } catch (error) {
     showStatus(error.message, "error");
   } finally {
@@ -1155,7 +1162,7 @@ for (const [key, limit] of Object.entries(OUTPUT_SPEC_LIMITS)) {
 document.querySelector("#reset-output-spec").addEventListener("click", () => {
   setVisibleOutputSpec(DEFAULT_OUTPUT_SPECS[currentOutputLanguage], currentOutputLanguage);
   updateOutputSpecSummary();
-  showStatus(`${outputLanguageLabel()}輸出規格已恢復預設值；儲存後生效。`, "info");
+  showStatus(t("{value}輸出規格已恢復預設值；儲存後生效。", { value: outputLanguageLabel() }), "info");
 });
 // ==== Summary writing preferences ====
 function updateSummaryInstructionsStatus() {
@@ -1171,15 +1178,15 @@ function updateSummaryInstructionsStatus() {
   }
   if (summaryInstructionsBusy) {
     summaryInstructionsStatus.classList.add("is-busy");
-    summaryInstructionsStatus.textContent = "正在保存摘要指引…";
+    summaryInstructionsStatus.textContent = t("處理中…");
   } else if (draft !== savedSummaryInstructions) {
     summaryInstructionsStatus.classList.add("is-pending");
-    summaryInstructionsStatus.textContent = "摘要指引尚未套用。";
+    summaryInstructionsStatus.textContent = t("摘要指引尚未套用。");
   } else {
     summaryInstructionsStatus.classList.add("is-ready");
     summaryInstructionsStatus.textContent = savedSummaryInstructions
-      ? "已套用自訂摘要指引；後續分析時使用。"
-      : "目前使用預設摘要方式。";
+      ? t("已套用自訂摘要指引；後續分析時使用。")
+      : t("目前使用預設摘要方式。");
   }
 }
 
@@ -1194,7 +1201,7 @@ async function persistSummaryInstructions(value, reset = false) {
     });
     savedSummaryInstructions = config.summaryInstructions;
     summaryInstructions.value = savedSummaryInstructions;
-    showStatus(reset ? "已恢復預設摘要方式。" : "已套用摘要指引。", "success");
+    showStatus(reset ? t("已恢復預設摘要方式。") : t("已套用摘要指引。"), "success");
   } catch (error) {
     showStatus(error.message, "error");
   } finally {
@@ -1224,7 +1231,7 @@ function renderUnclassifiedPills(manualItems, unclassified) {
     });
     return button;
   }));
-  unclassifiedSummary.textContent = `本輪未分類 ${unclassified.length} 個暫定主題`;
+  unclassifiedSummary.textContent = t("本輪未分類 {unclassifiedCount} 個暫定主題", { unclassifiedCount: unclassified.length });
   unclassifiedPanel.hidden = unclassified.length === 0;
 }
 
@@ -1237,12 +1244,12 @@ function renderManualReviewPanel(manualItems) {
   manualTopicReview.hidden = !manualItem;
   if (manualItem) {
     const index = manualItems.indexOf(manualItem);
-    manualTopicProgress.textContent = `人工確認 ${index + 1}／${manualItems.length}`;
+    manualTopicProgress.textContent = t("人工確認 {value}／{manualItemsCount}", { value: index + 1, manualItemsCount: manualItems.length });
     manualTopicName.textContent = manualItem.name;
-    manualTopicImpact.textContent = `影響 ${manualItem.impactCount} 篇`;
+    manualTopicImpact.textContent = t("影響 {impactCount} 篇", { impactCount: manualItem.impactCount });
     manualTopicNote.textContent = manualItem.permanentlyDiscarded
-      ? "這個名稱先前已設為永久捨棄；再次確認後會從本批受影響頁面移除。"
-      : "建立、改用既有或永久捨棄會立即完成處置；暫時跳過不會修改 Notion。";
+      ? t("這個名稱先前已設為永久捨棄；再次確認後會從本批受影響頁面移除。")
+      : "";
     const previousSelection = manualExistingTopic.value;
     manualExistingTopic.replaceChildren(...(organizerData?.existingTopics ?? []).map(topic => {
       const option = document.createElement("option");
@@ -1264,17 +1271,30 @@ function renderManualReviewPanel(manualItems) {
 function organizerSummaryText(unclassified) {
   if (!organizerData?.groups?.length) {
     return organizerData?.status === "cleared"
-      ? "目前的整理建議已清除；Notion 主題、文章內容與本機主題字典都沒有變動。"
+      ? t("整理建議已清除。")
       : organizerData
-      ? `已掃描 ${organizerData.pageCount} 篇頁面，讀取 ${organizerData.occurrenceCount} 次暫定主題（去重後 ${organizerData.candidateCount} 個）；${unclassified.length ? `本輪 ${unclassified.length} 個未找到合適分類。` : "目前沒有尚待確認的建議。"}`
-      : "尚未產生建議。";
+      ? t("已掃描 {pageCount} 篇、{candidateCount} 個暫定主題；{result}", {
+        pageCount: organizerData.pageCount,
+        candidateCount: organizerData.candidateCount,
+        result: unclassified.length
+          ? t("本輪 {count} 個未找到合適分類。", { count: unclassified.length })
+          : t("目前沒有尚待確認的建議。")
+      })
+      : t("尚未產生建議。");
   }
-  let text = `已掃描 ${organizerData.pageCount} 篇頁面，讀取 ${organizerData.occurrenceCount} 次暫定主題（去重後 ${organizerData.candidateCount} 個），尚有 ${organizerData.groups.length} 組建議待確認；本輪未分類 ${unclassified.length} 個。${organizerData.appliedCount ? ` 已套用 ${organizerData.appliedCount} 個暫定主題。` : ""}${organizerData.skippedCount ? ` 本次暫不處理 ${organizerData.skippedCount} 組。` : ""}`;
+  let text = t("已掃描 {pageCount} 篇、{candidateCount} 個暫定主題；{groupCount} 組建議待確認，{unclassifiedCount} 個未分類。", {
+    pageCount: organizerData.pageCount,
+    candidateCount: organizerData.candidateCount,
+    groupCount: organizerData.groups.length,
+    unclassifiedCount: unclassified.length
+  });
+  if (organizerData.appliedCount) text += t(" 已套用 {count} 個暫定主題。", { count: organizerData.appliedCount });
+  if (organizerData.skippedCount) text += t(" 本次暫不處理 {count} 組。", { count: organizerData.skippedCount });
   if (organizerData.warnings?.length) {
-    text += ` 另有 ${organizerData.warnings.length} 項安全提醒。`;
+    text += t(" 另有 {warningsCount} 項安全提醒。", { warningsCount: organizerData.warnings.length });
   }
   if (organizerData.progress) {
-    text += ` 目前進度：${organizerData.progress.done}/${organizerData.progress.total}（${organizerData.status}）。`;
+    text += t(" 目前進度：{done}/{total}（{status}）。", { done: organizerData.progress.done, total: organizerData.progress.total, status: organizerData.status });
   }
   return text;
 }
@@ -1437,6 +1457,18 @@ function formatOrganizerReasonText(raw, group = {}) {
 }
 
 /** Renders formatted reason with bold「既有主題」label; keeps pre-line newlines. */
+/**
+ * The labels around a reason (說明：, 建議：, 既有主題) are part of how suggestions are stored and parsed,
+ * so they stay Chinese up to here; only the line that reaches the screen follows the interface
+ * language. The reason itself was written by the AI in the output language and is shown as is.
+ */
+function displayOrganizerReasonLine(line) {
+  const labeled = line.match(/^(說明|建議)：(.*)$/s);
+  if (!labeled) return line;
+  const body = labeled[2] === "未提供說明" ? t("未提供說明") : labeled[2];
+  return `${labeled[1] === "說明" ? t("說明：") : t("建議：")}${body}`;
+}
+
 function fillOrganizerReasonElement(el, raw, group = {}) {
   const text = formatOrganizerReasonText(raw, group);
   el.replaceChildren();
@@ -1446,11 +1478,11 @@ function fillOrganizerReasonElement(el, raw, group = {}) {
     if (line === "既有主題") {
       const strong = document.createElement("strong");
       strong.className = "topic-group-reason__label";
-      strong.textContent = line;
+      strong.textContent = t("既有主題");
       el.appendChild(strong);
       return;
     }
-    el.appendChild(document.createTextNode(line));
+    el.appendChild(document.createTextNode(displayOrganizerReasonLine(line)));
   });
 }
 
@@ -1473,8 +1505,8 @@ function updateApplyProgressUi() {
   }
   if (applyProgressLabel) {
     applyProgressLabel.textContent = total > 0
-      ? `正在寫入 Notion… ${done}／${total}`
-      : "正在寫入 Notion…";
+      ? t("正在寫入 Notion… {done}／{total}", { done, total })
+      : t("正在寫入 Notion…");
   }
 }
 
@@ -1516,7 +1548,7 @@ function renderOrganizerGroupCard(group) {
   const selected = document.createElement("input");
   selected.type = "checkbox";
   selected.checked = Boolean(group.selected);
-  selected.setAttribute("aria-label", `選取建議主題：${group.standardTopic || "未命名主題"}`);
+  selected.setAttribute("aria-label", t("選取建議主題：{topic}", { topic: group.standardTopic || t("未命名主題") }));
   selected.addEventListener("change", () => {
     group.selected = selected.checked;
     if (selected.checked && !(group.selectedAliases ?? []).length) {
@@ -1529,11 +1561,11 @@ function renderOrganizerGroupCard(group) {
   const name = document.createElement("input");
   name.type = "text";
   name.value = group.standardTopic;
-  name.setAttribute("aria-label", "標準主題名稱");
+  name.setAttribute("aria-label", t("標準主題名稱"));
   name.addEventListener("input", () => { group.standardTopic = name.value.trim(); });
   const confidence = document.createElement("span");
   confidence.className = "confidence";
-  confidence.textContent = `${group.confidence === "high" ? "高" : group.confidence === "medium" ? "中" : "低"}信心`;
+  confidence.textContent = group.confidence === "high" ? t("高信心") : group.confidence === "medium" ? t("中信心") : t("低信心");
   head.append(selected, name, confidence);
   const reason = document.createElement("p");
   reason.className = "hint topic-group-reason";
@@ -1541,8 +1573,8 @@ function renderOrganizerGroupCard(group) {
   const source = document.createElement("p");
   source.className = "topic-source";
   source.textContent = (group.aliases ?? []).length > 1
-    ? "可合併為此分類的暫定主題（可分開勾選）"
-    : "建議加入此既有 AI 主題";
+    ? t("可合併為此分類的暫定主題（可分開勾選）")
+    : t("建議加入此既有 AI 主題");
   const aliasList = document.createElement("div");
   aliasList.className = "alias-list";
   const selectedAliasKeys = new Set((group.selectedAliases ?? []).map(topic => topic.normalize("NFKC").toLocaleLowerCase("zh-Hant-TW")));
@@ -1565,21 +1597,20 @@ function renderOrganizerGroupCard(group) {
   const separate = document.createElement("p");
   separate.className = "hint topic-separate";
   separate.textContent = (group.keepSeparate ?? []).length
-    ? `建議保持獨立：${group.keepSeparate.join("、")}`
+    ? t("建議保持獨立：{topics}", { topics: group.keepSeparate.join(t("、")) })
     : "";
   separate.hidden = !(group.keepSeparate ?? []).length;
   const impact = document.createElement("p");
   impact.className = "hint topic-impact";
-  impact.textContent = `若套用，將更新 ${group.impactCount} 篇`;
+  impact.textContent = t("若套用，將更新 {impactCount} 篇", { impactCount: group.impactCount });
   const skip = document.createElement("button");
   skip.type = "button";
   skip.className = "text-button topic-skip";
-  skip.textContent = "暫不處理這個建議";
+  skip.textContent = t("暫不處理這個建議");
   skip.addEventListener("click", async () => {
     try {
       organizerData = await send("SKIP_TOPIC_GROUP", { groupId: group.id, groups: organizerData.groups });
       renderOrganizer();
-      showStatus("這次先不處理；下次重新掃描時仍可能以其他方向出現。", "info", organizerOperationStatus);
     } catch (error) { showStatus(error.message, "error", organizerOperationStatus); }
   });
   card.append(head, reason, source, aliasList, separate, impact, skip);
@@ -1623,8 +1654,8 @@ function renderOrganizer() {
  */
 async function resolveManualTopic(action) {
   const candidate = manualCandidateName;
-  if (!candidate) return showStatus("目前沒有等待人工確認的暫定主題。", "error", organizerOperationStatus);
-  if (action === "discard" && !confirm(`確定永久捨棄「${candidate}」嗎？它會從本批受影響頁面的 AI 暫定主題中移除，且不會新增正式主題。`)) return;
+  if (!candidate) return showStatus(t("目前沒有等待人工確認的暫定主題。"), "error", organizerOperationStatus);
+  if (action === "discard" && !confirm(t("確定永久捨棄「{candidate}」嗎？它會從受影響頁面的暫定主題中移除。", { candidate }))) return;
   try {
     organizerData = await send("RESOLVE_ORGANIZER_UNCLASSIFIED", {
       candidate,
@@ -1635,8 +1666,8 @@ async function resolveManualTopic(action) {
     manualCustomTopic.value = "";
     renderOrganizer();
     showStatus(action === "skip"
-      ? `已暫時跳過「${candidate}」，Notion 內容保持不變。`
-      : `已處理「${candidate}」，並更新受影響頁面的剩餘暫定主題。`, action === "skip" ? "info" : "success", organizerOperationStatus);
+      ? t("已暫時跳過「{candidate}」，Notion 內容保持不變。", { candidate })
+      : t("已處理「{candidate}」，並更新受影響頁面的剩餘暫定主題。", { candidate }), action === "skip" ? "info" : "success", organizerOperationStatus);
   } catch (error) {
     showStatus(error.message, "error", organizerOperationStatus);
   }
@@ -1650,12 +1681,12 @@ document.querySelector("#manual-skip-topic").addEventListener("click", () => res
 
 document.querySelector("#prepare-topics").addEventListener("click", async () => {
   setBusy(true);
-  showStatus("正在收集最多 75 個去重後的 AI 暫定主題；不會讀取文章或其他 AI 欄位…", "info", organizerOperationStatus);
+  showStatus(t("正在收集暫定主題…"), "info", organizerOperationStatus);
   try {
     await saveSettings(false);
     organizerData = await send("PREPARE_TOPIC_ORGANIZER");
     renderOrganizer();
-    showStatus("整理建議已產生。無法安全分組的項目可在本輪未分類區逐項人工確認。", "success", organizerOperationStatus);
+    showStatus(t("整理建議已產生。"), "success", organizerOperationStatus);
   } catch (error) { showStatus(error.message, "error", organizerOperationStatus); }
   finally { setBusy(false); }
 });
@@ -1665,14 +1696,12 @@ document.querySelector("#select-high").addEventListener("click", () => {
     if (group.selected) group.selectedAliases = [...(group.aliases ?? [])];
   }
   renderOrganizer();
-  showStatus("已勾選高信心建議，請檢查內容後再套用。", "success", organizerOperationStatus);
 });
 document.querySelector("#apply-topics").addEventListener("click", async () => {
   const selectedGroups = (organizerData?.groups ?? []).filter(group => group.selected && (group.selectedAliases ?? []).length);
   const count = selectedGroups.length;
-  const candidateCount = selectedGroups.reduce((total, group) => total + group.selectedAliases.length, 0);
-  if (!count) return showStatus("請先勾選至少一組建議，並保留至少一個暫定主題。", "error", organizerOperationStatus);
-  if (!confirm(`確定套用 ${count} 組、共 ${candidateCount} 個暫定主題嗎？工具會批次更新受影響頁面，並保留可回復快照。`)) return;
+  if (!count) return showStatus(t("請先勾選至少一組建議，並保留至少一個暫定主題。"), "error", organizerOperationStatus);
+  if (!confirm(t("確定套用 {count} 組建議嗎？套用後可以回復。", { count }))) return;
   const draftGroups = organizerData.groups;
   let pollTimer = 0;
   try {
@@ -1683,7 +1712,7 @@ document.querySelector("#apply-topics").addEventListener("click", async () => {
       progress: { done: 0, total: Math.max(1, Number(organizerData.pageCount) || candidateCount) }
     };
     renderOrganizer();
-    showStatus("正在把已勾選主題寫入 Notion…", "info", organizerOperationStatus);
+    showStatus(t("處理中…"), "info", organizerOperationStatus);
     pollTimer = window.setInterval(() => {
       void send("GET_TOPIC_ORGANIZER").then(live => {
         if (!live) return;
@@ -1694,7 +1723,7 @@ document.querySelector("#apply-topics").addEventListener("click", async () => {
     organizerData = await send("APPLY_TOPIC_GROUPS", { groups: draftGroups });
     renderOrganizer();
     showStatus(
-      organizerData.status === "applied" ? "已套用主題對照並更新本機字典。" : "尚未完成，可重新套用或回復。",
+      organizerData.status === "applied" ? t("已套用主題對照並更新本機字典。") : t("尚未完成，可重新套用或回復。"),
       organizerData.status === "applied" ? "success" : "info",
       organizerOperationStatus
     );
@@ -1710,19 +1739,19 @@ document.querySelector("#apply-topics").addEventListener("click", async () => {
   }
 });
 document.querySelector("#clear-topic-suggestions").addEventListener("click", async () => {
-  if (!organizerData || !confirm("確定清除目前的主題整理建議嗎？這不會刪除 Notion 主題、不會改動文章，也不會清除本機主題字典。")) return;
+  if (!organizerData || !confirm(t("確定清除目前的整理建議嗎？Notion 內容與主題字典不受影響。"))) return;
   try {
     organizerData = await send("CLEAR_TOPIC_ORGANIZER");
     renderOrganizer();
-    showStatus("目前的主題整理建議已清除。", "success", organizerOperationStatus);
+    showStatus(t("整理建議已清除。"), "success", organizerOperationStatus);
   } catch (error) { showStatus(error.message, "error", organizerOperationStatus); }
 });
 document.querySelector("#rollback-topics").addEventListener("click", async () => {
-  if (!confirm("確定回復上一次主題套用嗎？新建的 Notion 選項不會自動刪除，但頁面內容與本機字典會復原。")) return;
+  if (!confirm(t("確定回復上一次套用嗎？已新增的 Notion 主題選項會保留。"))) return;
   try {
     organizerData = await send("ROLLBACK_TOPIC_APPLY");
     renderOrganizer();
-    showStatus("已回復上一次套用。", "success", organizerOperationStatus);
+    showStatus(t("已回復上一次套用。"), "success", organizerOperationStatus);
   } catch (error) { showStatus(error.message, "error", organizerOperationStatus); }
 });
 // ==== Topic dictionary import and export ====
@@ -1735,7 +1764,7 @@ document.querySelector("#export-dictionary").addEventListener("click", async () 
     link.download = `notion-ai-topic-dictionary-${new Date().toISOString().slice(0, 10)}.json`;
     link.click();
     URL.revokeObjectURL(url);
-    showStatus("主題字典已匯出。", "success", dictionaryStatus);
+    showStatus(t("主題字典已匯出。"), "success", dictionaryStatus);
   } catch (error) { showStatus(error.message, "error", dictionaryStatus); }
 });
 importDictionaryTrigger.addEventListener("click", () => {
@@ -1772,15 +1801,24 @@ importDictionary.addEventListener("change", async event => {
     const value = JSON.parse(await file.text());
     const preview = await send("PREVIEW_TOPIC_DICTIONARY_IMPORT", { value });
     const mode = importMode.value;
-    if (!confirm(`字典包含 ${preview.incoming.length} 個主題：新增 ${preview.newCount}、更新 ${preview.updateCount}、衝突 ${preview.conflictCount}、不變 ${preview.unchangedCount}。確定${mode === "overwrite" ? "取代" : "合併"}嗎？`)) return;
+    if (!confirm(t("字典包含 {total} 個主題：新增 {newCount}、更新 {updateCount}、衝突 {conflictCount}、不變 {unchangedCount}。{question}", {
+      total: preview.incoming.length,
+      newCount: preview.newCount,
+      updateCount: preview.updateCount,
+      conflictCount: preview.conflictCount,
+      unchangedCount: preview.unchangedCount,
+      question: mode === "overwrite" ? t("確定取代嗎？") : t("確定合併嗎？")
+    }))) return;
     const result = await send("IMPORT_TOPIC_DICTIONARY", { value, mode });
-    showStatus(`已匯入 ${result.imported} 個主題，目前字典共有 ${result.total} 個。`, "success", dictionaryStatus);
+    showStatus(t("已匯入 {imported} 個主題，目前字典共有 {total} 個。", { imported: result.imported, total: result.total }), "success", dictionaryStatus);
   } catch (error) { showStatus(error.message, "error", dictionaryStatus); }
   finally { event.target.value = ""; }
 });
 
 // ==== Setup summary and collapsible sections ====
-const SETUP_STATE_LABELS = { missing: "尚未設定", saved: "已儲存，尚未驗證", verified: "已驗證" };
+function setupStateLabel(state) {
+  return state === "verified" ? t("已驗證") : state === "saved" ? t("已儲存，尚未驗證") : t("尚未設定");
+}
 let nextSetupStep = null;
 
 function setSectionCollapsed(section, collapsed) {
@@ -1818,7 +1856,7 @@ function initSectionToggles() {
     // Hidden text instead of aria-label, so a screen reader also reads the visible summary beside it.
     const label = document.createElement("span");
     label.className = "visually-hidden";
-    label.textContent = `展開或收合「${heading.querySelector("h2").textContent}」`;
+    label.textContent = t("展開或收合「{section}」", { section: heading.querySelector("h2").textContent });
     const summary = document.createElement("span");
     summary.className = "section-toggle__summary";
     const chevron = document.createElement("span");
@@ -1849,7 +1887,7 @@ async function openSiftlyPopup() {
     await chrome.action.openPopup();
   } catch {
     // Chrome may refuse to open the popup from a page; the toolbar icon always works.
-    showStatus("請點瀏覽器工具列上的 Siftly 圖示開始分析。", "info");
+    showStatus(t("請點瀏覽器工具列上的 Siftly 圖示開始分析。"), "info");
   }
 }
 
@@ -1862,33 +1900,33 @@ function renderSetup(setup) {
   const fieldsReady = setup.fields === "ready";
   // Only a verified connection has actually read the database; before that the fields are unknown, not absent.
   const fieldsUnknown = !fieldsReady && setup.notion !== "verified";
-  const fieldsLabel = fieldsReady ? "已就緒" : fieldsUnknown ? "尚未檢查" : "尚未建立";
+  const fieldsLabel = fieldsReady ? t("已就緒") : fieldsUnknown ? t("尚未檢查") : t("尚未建立");
   for (const [key, state] of Object.entries(setup)) {
     const item = document.querySelector(`[data-setup-item="${key}"]`);
     item.dataset.state = state === "verified" || state === "ready" ? "done" : state;
-    item.querySelector(".setup-summary__state").textContent = key === "fields" ? fieldsLabel : SETUP_STATE_LABELS[state];
+    item.querySelector(".setup-summary__state").textContent = key === "fields" ? fieldsLabel : setupStateLabel(state);
   }
   if (setup.notion === "missing") {
-    nextSetupStep = { text: "下一步：貼上 Notion Token 並選擇資料庫", action: "前往連接 Notion", run: () => revealSection("notion-settings") };
+    nextSetupStep = { text: t("下一步：貼上 Notion Token 並選擇資料庫"), action: t("前往連接 Notion"), run: () => revealSection("notion-settings") };
   } else if (setup.notion !== "verified") {
-    nextSetupStep = { text: "下一步：確認 Notion 資料庫連線", action: "連接資料庫", run: connectNotionFromUi };
+    nextSetupStep = { text: t("下一步：確認 Notion 資料庫連線"), action: t("連接資料庫"), run: connectNotionFromUi };
   } else if (setup.ai === "missing") {
-    nextSetupStep = { text: "下一步：選擇 AI 服務並填入金鑰", action: "前往連接 AI 服務", run: () => revealSection("ai-settings") };
+    nextSetupStep = { text: t("下一步：選擇 AI 服務並填入金鑰"), action: t("前往連接 AI 服務"), run: () => revealSection("ai-settings") };
   } else if (setup.ai !== "verified") {
-    nextSetupStep = { text: "下一步：測試 AI 服務連線", action: "儲存並測試 AI 連線", run: testAiConnectionFromUi };
+    nextSetupStep = { text: t("下一步：測試 AI 服務連線"), action: t("儲存並測試 AI 連線"), run: testAiConnectionFromUi };
   } else if (!fieldsReady) {
-    nextSetupStep = { text: "下一步：建立 Siftly 需要的 Notion 欄位", action: "建立 Siftly 欄位", run: prepareNotionFieldsFromUi };
+    nextSetupStep = { text: t("下一步：建立 Siftly 需要的 Notion 欄位"), action: t("建立 Siftly 欄位"), run: prepareNotionFieldsFromUi };
   } else {
-    nextSetupStep = { text: "設定完成，可以開始分析。", action: "開啟 Siftly 開始分析", run: openSiftlyPopup };
+    nextSetupStep = { text: t("設定完成，可以開始分析。"), action: t("開啟 Siftly 開始分析"), run: openSiftlyPopup };
   }
   setupNextText.textContent = nextSetupStep.text;
   setupNextAction.textContent = nextSetupStep.action;
   setupNextAction.hidden = false;
 
-  setSectionSummary("notion-settings", SETUP_STATE_LABELS[setup.notion]);
-  setSectionSummary("ai-settings", SETUP_STATE_LABELS[setup.ai]);
+  setSectionSummary("notion-settings", setupStateLabel(setup.notion));
+  setSectionSummary("ai-settings", setupStateLabel(setup.ai));
   setSectionSummary("notion-fields", fieldsLabel);
-  setSectionSummary("topic-organizer-panel", fieldsReady ? "" : "準備欄位並分析文章後才有主題可整理");
+  setSectionSummary("topic-organizer-panel", fieldsReady ? "" : t("準備欄位並分析文章後才有主題可整理"));
   autoCollapseSection("notion-settings", setup.notion === "verified");
   autoCollapseSection("ai-settings", setup.ai === "verified");
   autoCollapseSection("notion-fields", fieldsReady);
@@ -1897,10 +1935,10 @@ function renderSetup(setup) {
   if (setup.notion === "missing") notionSetupGuide.open = true;
   articlePreparation.hidden = !fieldsReady;
   fieldsStatus.textContent = fieldsReady
-    ? "欄位已就緒，可以開始分析。"
-    : setup.notion === "missing" ? "請先連接 Notion，再準備欄位。"
-      : fieldsUnknown ? "還沒檢查這個資料庫的欄位。" : "這個資料庫還沒有 Siftly 欄位。";
-  prepareFieldsButton.textContent = fieldsReady ? "重新檢查欄位" : fieldsUnknown ? "檢查並建立 Siftly 欄位" : "建立 Siftly 欄位";
+    ? t("欄位已就緒，可以開始分析。")
+    : setup.notion === "missing" ? t("請先連接 Notion，再準備欄位。")
+      : fieldsUnknown ? t("還沒檢查這個資料庫的欄位。") : t("這個資料庫還沒有 Siftly 欄位。");
+  prepareFieldsButton.textContent = fieldsReady ? t("重新檢查欄位") : fieldsUnknown ? t("檢查並建立 Siftly 欄位") : t("建立 Siftly 欄位");
   // The list is the only description of what the button adds, so it stays open until the fields exist.
   if (!fieldsReady) fieldDetails.open = true;
 }
@@ -1916,14 +1954,17 @@ async function refreshSetup() {
 // Saves the form, then adds the fields and status options the database does not have yet.
 async function prepareNotionFieldsFromUi() {
   setBusy(true);
-  showStatus("正在檢查並建立 Notion 欄位…", "info", connectionStatus);
+  showStatus(t("處理中…"), "info", connectionStatus);
   try {
     await saveSettings(false);
     const prepared = await send("PREPARE_NOTION_FIELDS");
     const created = [...prepared.addedColumns, ...prepared.addedOptions];
     showStatus(created.length
-      ? `已在「${prepared.title || "Notion 資料庫"}」建立：${created.join("、")}。若看不到新建欄位，請到 Notion 既有資料庫檢視中把它們顯示出來。`
-      : "欄位已齊全，不需要修改 Notion。", "success", connectionStatus);
+      ? t("已在「{title}」建立：{created}。", {
+        title: prepared.title || t("Notion 資料庫"),
+        created: created.join(t("、"))
+      })
+      : t("欄位已齊全，不需要修改 Notion。"), "success", connectionStatus);
   } catch (error) {
     showStatus(error.message, "error", connectionStatus);
   } finally {
@@ -1935,12 +1976,15 @@ async function prepareNotionFieldsFromUi() {
 // Saves the chosen database and confirms the token can read it. Creates nothing in Notion.
 async function connectNotionFromUi() {
   setBusy(true);
-  showNotionDataSourceStatus("正在連接資料庫…");
+  showNotionDataSourceStatus(t("處理中…"));
   try {
     await saveSettings(false);
     const result = await send("TEST_NOTION_CONNECTION");
     showNotionDataSourceStatus(
-      `已連接「${result.title || "Notion 資料庫"}」。${result.fieldsReady ? "Siftly 欄位已就緒。" : "接著請到「準備 Notion 欄位」建立欄位。"}`,
+      t("已連接「{title}」。{next}", {
+        title: result.title || t("Notion 資料庫"),
+        next: result.fieldsReady ? t("Siftly 欄位已就緒。") : t("接著請到「準備 Notion 欄位」建立欄位。")
+      }),
       "success"
     );
   } catch (error) {
@@ -1954,14 +1998,14 @@ async function connectNotionFromUi() {
 // Tests the AI service on its own; needs no Notion database or fields.
 async function testAiConnectionFromUi() {
   setBusy(true);
-  showStatus("正在儲存並測試 AI 服務…", "info", modelOperationStatus);
+  showStatus(t("處理中…"), "info", modelOperationStatus);
   try {
     await saveSettings(false, false);
     const result = await send("TEST_AI_CONNECTION");
     const providerName = result.provider === "vertex" ? "Vertex AI" : "Google AI Studio";
     showStatus(result.selectedAvailable
-      ? `${providerName} 連線成功，目前模型可用。`
-      : `${providerName} 連線成功，但目前模型未出現在清單，請按「掃描所有可用模型」改選。`,
+      ? t("{providerName} 連線成功，目前模型可用。", { providerName })
+      : t("{providerName} 連線成功，但找不到目前的模型，請重新選擇。", { providerName }),
     result.selectedAvailable ? "success" : "info", modelOperationStatus);
   } catch (error) {
     showStatus(error.message, "error", modelOperationStatus);
@@ -1970,6 +2014,16 @@ async function testAiConnectionFromUi() {
     await refreshSetup();
   }
 }
+
+// The page is built once in one language, so a new language takes effect by reloading it.
+uiLanguage.addEventListener("change", async () => {
+  try {
+    await send("SET_UI_LANGUAGE", { language: uiLanguage.value });
+    location.reload();
+  } catch (error) {
+    showStatus(error.message, "error");
+  }
+});
 
 setupNextAction.addEventListener("click", () => nextSetupStep?.run());
 testAiButton.addEventListener("click", testAiConnectionFromUi);

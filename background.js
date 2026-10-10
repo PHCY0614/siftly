@@ -3,6 +3,8 @@
 // MV3 service worker entry. Classic importScripts (not ES modules) loads shared
 // libraries, then background/* modules into the worker global scope.
 importScripts(
+  "i18n/en.js",
+  "i18n/index.js",
   "shared.js",
   "prompt.js",
   "notion.js",

@@ -34,6 +34,10 @@
       <div class="hero-title-row">
         <h1>Siftly</h1>
         <span class="hero-subtitle">Notion x AI 內容整理工具</span>
+        <select id="ui-language" aria-label="介面語言" translate="no">
+          <option value="zh">正體中文</option>
+          <option value="en">English</option>
+        </select>
       </div>
       <p class="hero-summary">用 AI 幫 Notion 文章產生標題、摘要、關鍵字與主題。只寫入 Siftly 欄位，不更動原始標題、頁面正文或其他欄位。</p>
     </header>
@@ -64,7 +68,7 @@
       <details id="article-preparation" class="article-preparation" hidden>
         <summary>準備待分析文章</summary>
         <div class="article-preparation__body">
-          <p class="hint">從目前已保存的 Notion 資料庫選取尚未整理的文章。未選取的文章會保持原樣，不會自動開始分析。</p>
+          <p class="hint">選取尚未整理的文章加入分析；未選取的不受影響。</p>
           <div class="article-preparation__toolbar">
             <label for="article-page-size">每次載入</label>
             <select id="article-page-size">
@@ -74,7 +78,7 @@
             <button id="load-article-candidates" class="button secondary compact" type="button">載入文章</button>
             <button id="load-more-article-candidates" class="button secondary compact" type="button" hidden>載入更多</button>
           </div>
-          <p id="article-preparation-summary" class="hint" role="status" aria-live="polite">開啟後會載入最近 10 篇尚未整理的文章。</p>
+          <p id="article-preparation-summary" class="hint" role="status" aria-live="polite"></p>
           <p class="hint">預覽只取前 10 個頂層區塊，可能不含巢狀內容。</p>
           <div id="article-selection-toolbar" class="article-selection-toolbar" hidden>
             <label class="check-row">
@@ -142,7 +146,6 @@
             </div>
             <button id="connect-notion" class="button primary compact" type="button">連接資料庫</button>
           </div>
-          <p class="hint">選好後按「連接資料庫」確認連線；不會修改 Notion 欄位。</p>
         </div>
         <p id="database-change-warning" class="database-change-warning" role="note" hidden>連接後將切換作用中的資料庫，並清除目前資料庫的本機執行清單、近期結果與主題整理狀態；Notion 中既有內容不會被刪除。</p>
 
@@ -162,7 +165,6 @@
           <span class="step">2</span>
           <div>
             <h2 id="gemini-heading">連接 AI 服務</h2>
-            <p>可使用 Google AI Studio 或 Vertex AI。</p>
           </div>
         </div>
 
@@ -230,12 +232,10 @@
           </div>
           <button id="load-models" class="button secondary compact" type="button">掃描所有可用模型</button>
         </div>
-        <p id="model-summary" class="hint">掃描前會先保存目前設定，再讀取目前金鑰看得到的模型；Vertex AI 使用建議模型。</p>
         <div class="inline-actions">
           <button id="test-ai" class="button secondary" type="button">儲存並測試 AI 連線</button>
         </div>
         <p id="model-operation-status" class="local-status" aria-live="off"></p>
-        <p class="hint">所有金鑰都只儲存在目前 Chrome 使用者設定中。</p>
       </section>
 
       <section class="panel" id="notion-fields" aria-labelledby="fields-heading">
@@ -283,7 +283,6 @@
         <details class="advanced-settings-details">
           <summary>調整輸出規格、摘要指引與排除關鍵字</summary>
         <p id="output-spec-summary" class="hint">目前分析規格：標題最多 12 字｜主題 1～3 個｜關鍵字 5 個｜摘要 100～250 字</p>
-        <p id="output-spec-range-hint" class="hint">可調範圍：標題上限 6～30 字｜主題最少與最多各 1～5 個｜關鍵字 3～10 個｜摘要最少 50～500 字、最多 100～800 字。</p>
         <div class="spec-grid">
           <label><span id="title-max-label">標題上限（最高 30）</span><input id="title-max" type="number" min="6" max="30" value="12"></label>
           <label><span id="topic-min-label">主題最少（最高 5）</span><input id="topic-min" type="number" min="1" max="5" value="1"></label>
@@ -301,10 +300,10 @@
           <button id="reset-summary-instructions" class="button secondary compact" type="button" disabled>恢復預設</button>
         </div>
         <p id="summary-instructions-status" class="hint summary-instructions-status" role="status" aria-live="polite">正在載入摘要指引…</p>
-        <p class="hint">套用與恢復預設只會保存摘要指引；全頁儲存不會保存尚未套用的草稿。摘要長度依上方字數設定，既有摘要會保留。</p>
+        <p class="hint">摘要指引要按「套用」才會保存。</p>
         <label for="excluded-person-terms">關鍵字排除清單</label>
         <textarea id="excluded-person-terms" name="excludedPersonTerms" rows="4" spellcheck="false" placeholder="每行或逗號分隔，例如：A、B、C、D"></textarea>
-        <p class="hint">清單中的字詞不會被寫入 AI 關鍵字。可加入任何你希望排除的名稱、代稱、常用詞或其他詞彙。預設留白，可隨時增刪。</p>
+        <p class="hint">清單中的字詞不會寫入 AI 關鍵字。</p>
         <label for="request-timeout">單次 AI 等待上限</label>
         <select id="request-timeout">
           <option value="3">3 分鐘</option>
@@ -330,7 +329,7 @@
           <input id="prefer-existing-topics" type="checkbox">
           <span>優先沿用既有主題</span>
         </label>
-        <p class="hint">適合已有穩定分類的資料庫。開啟後，只要能由既有主題合理涵蓋，就會優先建議沿用；不適合時仍可建立新主題。</p>
+        <p class="hint">開啟後，既有主題能涵蓋時會優先建議沿用。</p>
         <p class="organizer-flow" id="topic-organizer-flow">產生建議 <span aria-hidden="true">→</span> 檢查與調整 <span aria-hidden="true">→</span> 套用或回復</p>
         <div class="organizer-actions" id="topic-organizer-actions">
           <div class="organizer-primary-actions">
@@ -354,7 +353,7 @@
         <div id="topic-groups" class="topic-groups"></div>
         <details id="unclassified-panel" class="unclassified-panel" hidden>
           <summary id="unclassified-summary">本輪未分類</summary>
-          <p class="hint">逐項建立正式主題、改用既有主題、永久捨棄或暫時跳過。前三種會立即從受影響頁面的 AI 暫定主題中移除；暫時跳過才會保留。</p>
+          <p class="hint">逐項決定：建立正式主題、改用既有主題、永久捨棄，或暫時跳過。</p>
           <div id="unclassified-topics" class="unclassified-topics"></div>
           <div id="manual-topic-review" class="manual-topic-review" hidden>
             <p id="manual-topic-progress" class="hint"></p>
@@ -375,7 +374,7 @@
             </div>
             <label for="manual-custom-topic">或建立自訂正式主題</label>
             <div class="manual-topic-action-row">
-              <input id="manual-custom-topic" type="text" maxlength="6" placeholder="優先 2～4 字，最多 6 字" autocomplete="off" aria-describedby="manual-custom-topic-hint">
+              <input id="manual-custom-topic" type="text" maxlength="6" autocomplete="off" aria-describedby="manual-custom-topic-hint">
               <button id="manual-use-custom" class="button secondary compact" type="button">使用自訂主題</button>
             </div>
             <p id="manual-custom-topic-hint" class="hint">自訂主題最多 6 字，建議使用 2～4 字。</p>
@@ -411,7 +410,7 @@
           <input id="import-dictionary" type="file" accept="application/json,.json" hidden>
         </div>
         <p id="dictionary-status" class="local-status" aria-live="off"></p>
-        <p class="hint">字典檔只含標準主題、定義、別名、顏色與啟用狀態，不含 API Key、Token 或文章正文。</p>
+        <p class="hint">字典檔不含 API Key、Token 或文章正文。</p>
       </section>
 
       <div class="bottom-actions">
@@ -422,7 +421,8 @@
       </div>
     </form>
   </main>
-  <script src="ui-select.js"></script>
-  <script src="options.js"></script>
+  <script src="i18n/en.js"></script>
+  <script src="i18n/index.js"></script>
+  <script src="i18n/page.js" data-scripts="ui-select.js,options.js"></script>
 </body>
 </html>

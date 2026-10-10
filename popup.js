@@ -1,5 +1,8 @@
 "use strict";
 
+// Interface text in the saved language; i18n/page.js has already translated the static page.
+const { t } = globalThis.AnalyzerI18n;
+
 const setupWarning = document.querySelector("#setup-warning");
 const runStatus = document.querySelector("#run-status");
 const statusDot = document.querySelector("#status-dot");
@@ -54,13 +57,10 @@ function statusOutputLanguage() {
 function applyTopicLanguageUi(language) {
   const english = normalizedOutputLanguage(language) === "en";
   customTopic.maxLength = english ? 100 : 6;
-  customTopic.placeholder = english
-    ? "優先 1～3 個單字，最多 60 個字元"
-    : "優先 2～4 字，最多 6 字";
   if (customTopicHint) {
     customTopicHint.textContent = english
-      ? "英文自訂主題最多 60 個字元，建議使用 1～3 個單字。"
-      : "自訂主題最多 6 字，建議使用 2～4 字。";
+      ? t("英文自訂主題最多 60 個字元，建議使用 1～3 個單字。")
+      : t("自訂主題最多 6 字，建議使用 2～4 字。");
   }
 }
 
@@ -75,7 +75,7 @@ function applyTopicLanguageUi(language) {
 function enhanceTopicSelect(select) {
   return AnalyzerSelect.enhance(select, {
     extraRootClass: "custom-select--amber",
-    emptyLabel: "請選擇主題",
+    emptyLabel: t("請選擇主題"),
     attachDocumentListeners: true
   });
 }
@@ -94,7 +94,6 @@ const buttons = {
 };
 const organizeTopicsButton = document.querySelector("#organize-topics");
 const reanalyzeHint = document.querySelector("#reanalyze-hint");
-const REANALYZE_CONFIRM_MESSAGE = "重新分析會重新產生 AI 分析結果，並清除既有已確認的 AI 主題；之後需要重新確認主題。確定繼續嗎？";
 const batchAiDialog = document.querySelector("#batch-ai-dialog");
 const batchAiDialogMessage = document.querySelector("#batch-ai-dialog-message");
 const batchAiCancel = document.querySelector("#batch-ai-cancel");
@@ -117,12 +116,12 @@ let hasRenderedStatus = false;
  * Does not send messages.
  */
 function currentPageAction(info) {
-  if (!info) return { action: "analyze", label: "分析目前頁面" };
-  if (info.status === "failed") return { action: "retry", label: "重試目前頁面" };
-  if (info.status === "topicOrganize") return { action: "review", label: "整理主題" };
-  if (info.status === "topicReview") return { action: "review", label: "繼續確認主題" };
-  if (info.status === "analyzed" || info.analyzed) return { action: "reanalyze", label: "重新分析" };
-  return { action: "analyze", label: "分析目前頁面" };
+  if (!info) return { action: "analyze", label: t("分析目前頁面") };
+  if (info.status === "failed") return { action: "retry", label: t("重試目前頁面") };
+  if (info.status === "topicOrganize") return { action: "review", label: t("整理主題") };
+  if (info.status === "topicReview") return { action: "review", label: t("繼續確認主題") };
+  if (info.status === "analyzed" || info.analyzed) return { action: "reanalyze", label: t("重新分析") };
+  return { action: "analyze", label: t("分析目前頁面") };
 }
 
 /**
@@ -131,7 +130,7 @@ function currentPageAction(info) {
  * are regenerated and need confirmation again.
  */
 function confirmDestructiveReanalysis() {
-  return window.confirm(REANALYZE_CONFIRM_MESSAGE);
+  return window.confirm(t("重新分析會重新產生 AI 分析結果，並清除既有已確認的 AI 主題；之後需要重新確認主題。確定繼續嗎？"));
 }
 
 /**
@@ -141,9 +140,9 @@ function confirmDestructiveReanalysis() {
 function batchAiSendConfirmMessage(pageCount) {
   const count = Number(pageCount);
   const lead = Number.isFinite(count) && count > 0
-    ? `即將分析約 ${count} 頁。`
-    : "即將分析約若干頁。";
-  return `${lead}文字會傳送到你選擇的 Google AI。未付費的 AI Studio 可能將內容用於改善產品。確定繼續嗎？`;
+    ? t("即將分析約 {count} 頁。", { count })
+    : t("即將分析約若干頁。");
+  return t("{lead}文字會傳送到你選擇的 Google AI。未付費的 AI Studio 可能將內容用於改善產品。確定繼續嗎？", { lead });
 }
 
 function confirmBatchAiSend() {
@@ -171,7 +170,7 @@ function confirmBatchAiSend() {
  */
 async function send(type, extra = {}) {
   const response = await chrome.runtime.sendMessage({ type, ...extra });
-  if (!response?.ok) throw new Error(response?.error?.message || "操作失敗");
+  if (!response?.ok) throw new Error(response?.error?.message || t("操作失敗"));
   return response.data;
 }
 
@@ -273,7 +272,7 @@ async function copyText(value) {
     textarea.select();
     const copied = document.execCommand("copy");
     textarea.remove();
-    if (!copied) throw new Error("無法複製紀錄");
+    if (!copied) throw new Error(t("無法複製紀錄"));
   }
 }
 
@@ -286,7 +285,7 @@ async function copyText(value) {
  */
 function renderRecent(items) {
   if (!items?.length) {
-    recentList.innerHTML = '<p class="empty">尚無分析紀錄</p>';
+    recentList.innerHTML = `<p class="empty">${t("尚無分析紀錄")}</p>`;
     return;
   }
   recentList.replaceChildren(...items.map(item => {
@@ -296,7 +295,7 @@ function renderRecent(items) {
     const safeHref = AnalyzerShared.safeNotionPageHref(item.url);
     const title = document.createElement(safeHref ? "a" : "span");
     title.className = "recent-title";
-    title.textContent = item.title || "未命名文章";
+    title.textContent = item.title || t("未命名文章");
     if (safeHref) {
       title.href = safeHref;
       title.target = "_blank";
@@ -306,7 +305,7 @@ function renderRecent(items) {
     const reanalyze = document.createElement("button");
     reanalyze.className = "reanalyze";
     reanalyze.type = "button";
-    reanalyze.textContent = item.outcome === "failed" ? "重試" : "重新分析";
+    reanalyze.textContent = item.outcome === "failed" ? t("重試") : t("重新分析");
     reanalyze.addEventListener("click", () => {
       const force = item.outcome !== "failed";
       if (force && !confirmDestructiveReanalysis()) return;
@@ -320,14 +319,14 @@ function renderRecent(items) {
       const copyLog = document.createElement("button");
       copyLog.className = "copy-log";
       copyLog.type = "button";
-      copyLog.textContent = "複製安全 Log";
+      copyLog.textContent = t("複製安全 Log");
       copyLog.addEventListener("click", async () => {
         const original = copyLog.textContent;
         try {
           await copyText(failureLog(item));
-          copyLog.textContent = "已複製";
+          copyLog.textContent = t("已複製");
         } catch {
-          copyLog.textContent = "複製失敗";
+          copyLog.textContent = t("複製失敗");
         }
         setTimeout(() => { copyLog.textContent = original; }, 1600);
       });
@@ -336,13 +335,13 @@ function renderRecent(items) {
 
     const meta = document.createElement("span");
     meta.className = "recent-meta";
-    meta.textContent = `${item.outcome === "failed" ? "分析失敗" : "已分析"} · ${formatTime(item.analyzedAt || item.failedAt)}`;
+    meta.textContent = `${item.outcome === "failed" ? t("分析失敗") : t("已分析")} · ${formatTime(item.analyzedAt || item.failedAt)}`;
 
     row.append(title, rowActions, meta);
     if (item.error) {
       const error = document.createElement("span");
       error.className = "recent-error";
-      error.textContent = item.error;
+      error.textContent = t(item.error);
       row.append(error);
     }
     return row;
@@ -367,7 +366,7 @@ function renderTopicReview(review) {
   applyTopicLanguageUi(inferTopicLanguage(review, statusOutputLanguage()));
 
   const item = review.item || {};
-  reviewPageTitle.textContent = item.title || "未命名文章";
+  reviewPageTitle.textContent = item.title || t("未命名文章");
   const safeHref = AnalyzerShared.safeNotionPageHref(item.url);
   if (safeHref) {
     reviewPageTitle.href = safeHref;
@@ -376,10 +375,10 @@ function renderTopicReview(review) {
     reviewPageTitle.removeAttribute("href");
     reviewPageTitle.setAttribute("aria-disabled", "true");
   }
-  topicCandidate.textContent = review.candidate || "未命名候選";
+  topicCandidate.textContent = review.candidate || t("未命名候選");
   topicProgress.textContent = review.candidateTotal > 1
-    ? `候選主題 ${review.candidatePosition}/${review.candidateTotal}`
-    : "候選主題";
+    ? t("候選主題 {candidatePosition}/{candidateTotal}", { candidatePosition: review.candidatePosition, candidateTotal: review.candidateTotal })
+    : t("候選主題");
   const retainedTopicChips = (review.existingTopics ?? []).map(name => {
     const chip = document.createElement("span");
     chip.className = "topic-chip";
@@ -389,7 +388,7 @@ function renderTopicReview(review) {
   reviewExisting.classList.toggle("empty-topics", retainedTopicChips.length === 0);
   reviewExisting.replaceChildren(...(retainedTopicChips.length
     ? retainedTopicChips
-    : [document.createTextNode("無")]));
+    : [document.createTextNode(t("無"))]));
 
   const reviewKey = `${item.id || ""}:${review.candidatePosition || 1}:${review.candidate || ""}`;
   const isNewReview = reviewKey !== renderedReviewKey;
@@ -443,7 +442,7 @@ const PopupPresentation = Object.freeze({
     if (!identity) return "";
     const match = String(identity).match(/[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12}/);
     const shortId = match ? match[0].replace(/-/g, "").slice(0, 8) : "";
-    return `作用中資料庫：${shortId ? `ID ${shortId}` : identity}`;
+    return t("作用中資料庫：{database}", { database: shortId ? `ID ${shortId}` : identity });
   },
 
   nextStep({ currentSurface, state = {} } = {}) {
@@ -457,7 +456,7 @@ const PopupPresentation = Object.freeze({
     if (currentSurface === "other") {
       return busy
         ? { hidden: true, message: "", action: false }
-        : { hidden: false, message: "請切換到 Notion 頁面，再開始分析目前文章。", action: false };
+        : { hidden: false, message: t("請切換到 Notion 頁面，再開始分析目前文章。"), action: false };
     }
     if (currentSurface === "database"
       && !busy
@@ -465,7 +464,7 @@ const PopupPresentation = Object.freeze({
       && state.databaseCheck?.code === "NO_PENDING_PAGES") {
       return {
         hidden: false,
-        message: "目前沒有待分析文章。請到設定頁的「準備待分析文章」選取文章加入待分析。",
+        message: t("目前沒有待分析文章。請到設定頁的「準備待分析文章」選取文章加入待分析。"),
         action: true
       };
     }
@@ -496,15 +495,15 @@ const PopupPresentation = Object.freeze({
     const key = `${bucket}:${itemId}:${reviewKey}:${state.lastError || ""}${queueKey}`;
     let message = "";
     if (bucket === "idle" && !initial && ["running", "review"].includes(previousBucket)) {
-      message = "分析已結束，目前待命。";
+      message = t("分析已結束，目前待命。");
     } else if (bucket === "running") {
-      message = `分析開始：${state.current?.title || "目前文章"}。`;
+      message = t("分析開始：{title}。", { title: state.current?.title || t("目前文章") });
     } else if (bucket === "review") {
-      message = `等待確認主題：${state.topicReview?.item?.title || "目前文章"}。`;
+      message = t("等待確認主題：{title}。", { title: state.topicReview?.item?.title || t("目前文章") });
     } else if (bucket === "paused") {
-      message = `分析已暫停，佇列還有 ${state.queueCount} 篇。`;
+      message = t("分析已暫停，佇列還有 {queueCount} 篇。", { queueCount: state.queueCount });
     } else if (bucket === "queued") {
-      message = `目前有 ${state.queueCount} 篇等待處理。`;
+      message = t("目前有 {queueCount} 篇等待處理。", { queueCount: state.queueCount });
     }
     // Errors are announced by #error-box[role=alert], avoiding duplicate speech.
     if (bucket === "error") message = "";
@@ -567,17 +566,17 @@ function renderStatus(state) {
   const databasePage = currentSurface === "database";
   const stageName = state.stage?.name || "";
   announceStatusTransition(state);
-  runStatus.textContent = reviewing ? "等待確認主題" : running && stageName ? stageName : running ? "分析中" : paused && state.queueCount ? "已暫停" : state.queueCount ? "等待處理" : "待命";
+  runStatus.textContent = reviewing ? t("等待確認主題") : running && stageName ? stageName : running ? t("分析中") : paused && state.queueCount ? t("已暫停") : state.queueCount ? t("等待處理") : t("待命");
   statusDot.className = `dot${reviewing ? " review" : running ? " running" : paused && state.queueCount ? " paused" : ""}`;
   currentTitle.textContent = state.current
-    ? `正在分析：${state.current.title || "未命名文章"}`
-    : reviewing ? `等待確認：${state.topicReview.item?.title || "未命名文章"}` : "目前沒有正在分析的文章";
+    ? t("正在分析：{title}", { title: state.current.title || t("未命名文章") })
+    : reviewing ? t("等待確認：{title}", { title: state.topicReview.item?.title || t("未命名文章") }) : t("目前沒有正在分析的文章");
   if (state.stage?.startedAt) {
     const seconds = Math.max(0, Math.floor((Date.now() - new Date(state.stage.startedAt).getTime()) / 1000));
     const model = state.stage.model ? ` · ${state.stage.model}` : "";
-    const progress = Number.isFinite(state.stage.progress) ? ` · 已讀取 ${state.stage.progress} 篇` : "";
+    const progress = Number.isFinite(state.stage.progress) ? t(" · 已讀取 {progress} 篇", { progress: state.stage.progress }) : "";
     const detail = state.stage.detail ? ` · ${state.stage.detail}` : "";
-    stageDetail.textContent = `${stageName}${model}${progress}${detail} · 已等待 ${seconds} 秒`;
+    stageDetail.textContent = t("{stageName}{model}{progress}{detail} · 已等待 {seconds} 秒", { stageName, model, progress, detail, seconds });
     stageDetail.hidden = false;
   } else {
     stageDetail.hidden = true;
@@ -587,7 +586,7 @@ function renderStatus(state) {
   failedCount.textContent = String(state.failed?.length || 0);
   const databaseMessage = state.databaseCheck?.message || "";
   const databaseMessageActive = Boolean(databaseMessage && state.lastError === databaseMessage);
-  const visibleError = databaseMessageActive && !databasePage ? "" : state.lastError || "";
+  const visibleError = databaseMessageActive && !databasePage ? "" : t(state.lastError || "");
   errorBox.hidden = !visibleError;
   if (errorBox.textContent !== visibleError) errorBox.textContent = visibleError;
   errorBox.classList.toggle("notice", databaseMessageActive);
@@ -607,12 +606,12 @@ function renderStatus(state) {
   buttons.queueControl.hidden = !(databasePage || batchActive);
   buttons.queueControl.classList.toggle("wide-action", !databasePage && batchActive);
   queueControlAction = batchActive ? "stop" : "resume";
-  buttons.queueControl.textContent = batchActive ? "停止分析" : "繼續分析";
+  buttons.queueControl.textContent = batchActive ? t("停止分析") : t("繼續分析");
   buttons.queueControl.title = batchActive
-    ? "停止目前的批次分析"
+    ? t("停止目前的批次分析")
     : canResumeBatch
-      ? "繼續先前暫停的批次分析"
-      : "目前沒有暫停中的分析佇列";
+      ? t("繼續先前暫停的批次分析")
+      : t("目前沒有暫停中的分析佇列");
 
   buttons.queueControl.disabled = actionBusy || !(batchActive || canResumeBatch);
   buttons.retry.disabled = actionBusy || reviewing || !configured || running || batchActive || databaseBlocked;
@@ -625,7 +624,7 @@ function renderStatus(state) {
     ? actionBusy
     : actionBusy || reviewing || !configured || running || !currentPageInfo;
   buttons.current.textContent = singleActive
-    ? "停止分析"
+    ? t("停止分析")
     : pageAction.label;
   reanalyzeHint.hidden = !(singlePage && !singleActive && currentAction === "reanalyze");
 }

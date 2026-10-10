@@ -5,7 +5,7 @@
 // ==== Topic-review helpers ====
 function ensureNoTopicReview() {
   if (stateCache.topicReview) {
-    throw new AppError("目前有一篇文章等待確認新主題，請先完成確認", {
+    throw new AppError(t("目前有一篇文章等待確認新主題，請先完成確認"), {
       code: "TOPIC_REVIEW_PENDING"
     });
   }
@@ -37,7 +37,7 @@ async function resolveTopicReview(action, replacementTopic = "", customTopic = "
   const review = normalizeTopicReview(stateCache.topicReview);
   const currentCandidate = review?.remainingCandidates?.[0];
   if (!review?.item || !currentCandidate?.name) {
-    throw new AppError("目前沒有等待確認的新主題", { code: "TOPIC_REVIEW_MISSING" });
+    throw new AppError(t("目前沒有等待確認的新主題"), { code: "TOPIC_REVIEW_MISSING" });
   }
 
   const config = await readConfig();
@@ -58,7 +58,7 @@ async function resolveTopicReview(action, replacementTopic = "", customTopic = "
   } else if (action === "replace") {
     const replacement = byKey.get(N.topicKey(replacementTopic));
     if (!replacement) {
-      throw new AppError("請從 Notion 既有主題中選擇", { code: "TOPIC_REPLACEMENT_INVALID" });
+      throw new AppError(t("請從 Notion 既有主題中選擇"), { code: "TOPIC_REPLACEMENT_INVALID" });
     }
     selectedTopic = replacement;
     topicDecision = "replaced_with_existing";
@@ -181,14 +181,14 @@ function pageBelongsToConfiguredSource(page, config) {
 
 function requirePageId(pageId) {
   const id = S.extractNotionId(pageId);
-  if (!id) throw new AppError("目前分頁不是可辨識的 Notion 頁面", { code: "PAGE_ID_INVALID" });
+  if (!id) throw new AppError(t("目前分頁不是可辨識的 Notion 頁面"), { code: "PAGE_ID_INVALID" });
   return id;
 }
 
 async function readConfiguredPage(id, config, token) {
   const page = await notionRequest(`/v1/pages/${id}`, { token });
   if (!pageBelongsToConfiguredSource(page, config)) {
-    throw new AppError("這個頁面不屬於目前設定的 Notion 資料庫", { code: "PAGE_OUTSIDE_DATA_SOURCE" });
+    throw new AppError(t("這個頁面不屬於目前設定的 Notion 資料庫"), { code: "PAGE_OUTSIDE_DATA_SOURCE" });
   }
   return page;
 }
@@ -225,14 +225,14 @@ async function reviewCurrentPageTopics(pageId) {
 
   const values = fields.pagePropertyValues(page);
   if (![N.STATUS.topicOrganize, N.STATUS.topicReview].includes(values.status)) {
-    throw new AppError("目前頁面的整理狀態不是「待主題整理」或「待主題確認」", {
+    throw new AppError(t("目前頁面的整理狀態不是「待主題整理」或「待主題確認」"), {
       code: "PAGE_TOPIC_REVIEW_STATUS_INVALID"
     });
   }
 
   const provisionalTopics = uniqueTopicNames(values.provisionalTopics);
   if (!provisionalTopics.length) {
-    throw new AppError("目前頁面沒有可整理的 AI 暫定主題", {
+    throw new AppError(t("目前頁面沒有可整理的 AI 暫定主題"), {
       code: "PAGE_TOPIC_REVIEW_EMPTY"
     });
   }
@@ -292,7 +292,7 @@ async function reanalyzePage(pageId, force = false) {
   const inspection = await inspectPage(id);
   assertArticleSelectionIdle();
   if (inspection.analyzed && !force) {
-    throw new AppError("這個頁面已有分析內容，重新分析會覆寫 AI 欄位", { code: "PAGE_OVERWRITE_CONFIRM_REQUIRED" });
+    throw new AppError(t("這個頁面已有分析內容，重新分析會覆寫 AI 欄位"), { code: "PAGE_OVERWRITE_CONFIRM_REQUIRED" });
   }
   stateCache.queue = uniqueItems([{ ...inspection, sourceStatus: "重新分析" }, ...stateCache.queue]);
   stateCache.paused = false;

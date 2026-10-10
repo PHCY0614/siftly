@@ -19,11 +19,11 @@ async function scanPending() {
   assertArticleSelectionIdle();
   if (stateCache.mode === "batch" && !stateCache.paused
     && Boolean(stateCache.running || stateCache.current || stateCache.queue.length)) {
-    throw new AppError("批次分析正在執行中。請先按「停止分析」，再重新掃描資料庫。", {
+    throw new AppError(t("批次分析正在執行中。請先按「停止分析」，再重新掃描資料庫。"), {
       code: "BATCH_RUNNING"
     });
   }
-  await setStage("掃描 Notion", { progress: 0 });
+  await setStage(t("掃描 Notion"), { progress: 0 });
   let config;
   let fields;
   let token;
@@ -39,9 +39,9 @@ async function scanPending() {
   const onProgress = async (count, status) => {
     if (status === N.STATUS.pending) pendingFound = count;
     if (status === N.STATUS.failed) failedFound = count;
-    await setStage("掃描 Notion", {
+    await setStage(t("掃描 Notion"), {
       progress: pendingFound + failedFound,
-      detail: `待分析 ${pendingFound}、分析失敗 ${failedFound}`
+      detail: t("待分析 {pendingFound}、分析失敗 {failedFound}", { pendingFound, failedFound })
     });
   };
   const [pages, remoteFailed] = await withAbortTimeout(
@@ -61,7 +61,7 @@ async function scanPending() {
     null,
     90000,
     "SCAN_TIMEOUT",
-    "掃描 Notion 超過 90 秒，請檢查網路或稍後重試"
+    t("Notion 回應逾時，請稍後再試。")
   ).catch(async error => {
     stateCache.stage = null;
     await persistState();
@@ -74,7 +74,7 @@ async function scanPending() {
     return {
       ...item,
       ...(local ?? {}),
-      error: local?.error || "Notion 中標記為分析失敗；擴充功能本機沒有保留原始錯誤紀錄。",
+      error: local?.error || t("Notion 中標記為分析失敗，沒有本機錯誤紀錄。"),
       failedAt: local?.failedAt || item.lastEditedTime || new Date().toISOString(),
       sourceStatus: N.STATUS.failed
     };
@@ -216,7 +216,7 @@ async function resetPageToPending(item, token) {
       token
     });
   } catch (cleanupError) {
-    stateCache.lastError = `${stateCache.lastError || "處理已停止"}；但無法把 Notion 狀態改回待分析：${cleanupError.message}`;
+    stateCache.lastError = t("{previous}；但無法把 Notion 狀態改回待分析：{error}", { previous: stateCache.lastError || t("處理已停止"), error: cleanupError.message });
   }
 }
 
@@ -239,16 +239,16 @@ async function recordFailure(item, error, token) {
         token
       });
     } catch (failureStatusError) {
-      statusError = `；且無法寫入分析失敗狀態：${failureStatusError.message}`;
+      statusError = t("；且無法寫入分析失敗狀態：{message}", { message: failureStatusError.message });
     }
   } else {
-    statusError = "；且目前沒有 Notion Token，無法寫入分析失敗狀態";
+    statusError = t("；且目前沒有 Notion Token，無法寫入分析失敗狀態");
   }
   const failure = {
     ...sanitizeQueueItem(item),
     code: error.code || "APP_ERROR",
     diagnostic: G.sanitizeDiagnostic(error.diagnostic),
-    error: `${S.truncateMessage(error.message || "未知錯誤")}${statusError}`,
+    error: `${S.truncateMessage(error.message || t("未知錯誤"))}${statusError}`,
     failedAt: new Date().toISOString()
   };
   stateCache.failed = [sanitizeHistoryItem(failure), ...stateCache.failed.filter(entry => entry.id !== item.id)].slice(0, MAX_RECENT);
@@ -298,7 +298,7 @@ async function processItem(item) {
     const expectedSourceId = compactNotionId(config.dataSourceId);
     const queuedSourceId = compactNotionId(item.sourceDataSourceId);
     if (queuedSourceId && queuedSourceId !== expectedSourceId) {
-      throw new AppError("本機佇列不屬於目前設定的 Notion 資料庫", {
+      throw new AppError(t("佇列屬於先前的資料庫，已停止。請重新掃描資料庫。"), {
         code: "QUEUE_SOURCE_MISMATCH"
       });
     }
@@ -308,7 +308,7 @@ async function processItem(item) {
         token
       });
       if (!pageBelongsToConfiguredSource(page, config)) {
-        throw new AppError("本機佇列不屬於目前設定的 Notion 資料庫", {
+        throw new AppError(t("佇列屬於先前的資料庫，已停止。請重新掃描資料庫。"), {
           code: "QUEUE_SOURCE_MISMATCH"
         });
       }
@@ -316,7 +316,7 @@ async function processItem(item) {
       stateCache.current = item;
       await persistState();
     }
-    await setStage("準備頁面", { pageId: item.id });
+    await setStage(t("準備頁面"), { pageId: item.id });
     await notionRequest(`/v1/pages/${item.id}`, {
       method: "PATCH",
       body: fields.statusUpdatePayload(N.STATUS.processing),
@@ -325,26 +325,26 @@ async function processItem(item) {
     });
     if (stateCache.stopRequested) throw new DOMException("已停止", "AbortError");
 
-    await setStage("讀取頁面", { pageId: item.id });
+    await setStage(t("讀取頁面"), { pageId: item.id });
     const records = await withAbortTimeout(
       signal => readPageRecords(item.id, token, signal),
       controller.signal,
       90000,
       "PAGE_READ_TIMEOUT",
-      "讀取單一 Notion 頁面超過 90 秒，已停止"
+      t("Notion 回應逾時，請稍後再試。")
     );
     const articleText = N.buildArticleText(records);
     if (!articleText) {
-      throw new AppError("頁面沒有可供分析的純文字內容", { code: "EMPTY_ARTICLE" });
+      throw new AppError(t("頁面沒有可供分析的純文字內容"), { code: "EMPTY_ARTICLE" });
     }
     assertArticleSize(articleText);
     if (stateCache.stopRequested) throw new DOMException("已停止", "AbortError");
 
-    await setStage("準備 AI", { pageId: item.id });
+    await setStage(t("準備 AI"), { pageId: item.id });
     if ((config.aiProvider || "gemini") !== "vertex") {
       const waitMs = Math.max(0, AI_STUDIO_PAGE_GAP_MS - (Date.now() - lastAiPageCallAt));
       if (waitMs > 0) {
-        await setStage("等待速率配額", { pageId: item.id, detail: `約 ${Math.ceil(waitMs / 1000)} 秒` });
+        await setStage(t("等待速率配額"), { pageId: item.id, detail: t("約 {seconds} 秒", { seconds: Math.ceil(waitMs / 1000) }) });
         await abortableSleep(waitMs, controller.signal);
       }
     }
@@ -352,7 +352,7 @@ async function processItem(item) {
     const result = await analyzeArticle(articleText, config, controller.signal);
     if (stateCache.stopRequested) throw new DOMException("已停止", "AbortError");
 
-    await setStage("寫回 Notion", { pageId: item.id });
+    await setStage(t("寫回 Notion"), { pageId: item.id });
     const isSingleReview = stateCache.mode === "single_review";
     const draftStatus = isSingleReview ? N.STATUS.topicReview : N.STATUS.topicOrganize;
     const singleTopicOptions = isSingleReview
@@ -390,7 +390,7 @@ async function processItem(item) {
     decrementKnownPending(item);
   } catch (error) {
     if (isAbort(error) || stateCache.stopRequested) {
-      await requeueAndPause(item, "已停止；目前文章已放回待分析佇列。", token, { resetPage: true });
+      await requeueAndPause(item, t("已停止；目前文章已放回待分析佇列。"), token, { resetPage: true });
     } else if (error.code === "QUEUE_SOURCE_MISMATCH") {
       stateCache.queue = [];
       stateCache.failed = [];
@@ -398,19 +398,19 @@ async function processItem(item) {
       stateCache.pendingScan = null;
       stateCache.paused = true;
       stateCache.mode = "paused";
-      stateCache.lastError = "已攔截先前資料庫留下的本機佇列，沒有寫入任何頁面。請按「掃描資料庫」後再開始分析。";
+      stateCache.lastError = t("佇列屬於先前的資料庫，已停止。請重新掃描資料庫。");
     } else if (REQUEUE_TIMEOUT_CODES.has(error.code)) {
       await requeueAndPause(
         item,
-        `${S.truncateMessage(error.message)}。文章已放回待分析；請自行決定重試或更換模型。`,
+        t("{error}。文章已放回待分析；請自行決定重試或更換模型。", { error: S.truncateMessage(error.message) }),
         token,
         { resetPage: true }
       );
     } else if (RATE_LIMIT_CODES.has(error.code)) {
-      const wait = error.retryAfter ? `（建議約 ${error.retryAfter} 秒後）` : "";
+      const wait = error.retryAfter ? t("（建議約 {retryAfter} 秒後）", { retryAfter: error.retryAfter }) : "";
       const friendly = error.code === "NOTION_RATE_LIMIT"
-        ? `Notion 請求過於頻繁${wait}，請稍後再繼續`
-        : `${AI_RATE_LIMIT_USER_MESSAGE}${wait}`;
+        ? t("Notion 請求過於頻繁{wait}，請稍後再繼續", { wait })
+        : `${t("已達 Google AI 速率或額度上限，請稍後再繼續")}${wait}`;
       await requeueAndPause(
         item,
         friendly,
@@ -420,7 +420,7 @@ async function processItem(item) {
     } else if (SETUP_ERROR_CODES.has(error.code)) {
       await requeueAndPause(
         item,
-        `設定或授權需要修正，佇列已暫停：${S.truncateMessage(error.message)}`,
+        t("設定或授權需要修正，佇列已暫停：{error}", { error: S.truncateMessage(error.message) }),
         token,
         { resetPage: !["NOTION_AUTH", "NOTION_TOKEN_MISSING"].includes(error.code) }
       );
@@ -459,7 +459,7 @@ async function processOne() {
       stateCache.current = null;
       stateCache.running = false;
       stateCache.paused = true;
-      stateCache.lastError = `背景處理意外中斷，文章已放回佇列：${S.truncateMessage(error?.message || "未知錯誤")}`;
+      stateCache.lastError = t("背景處理意外中斷，文章已放回佇列：{error}", { error: S.truncateMessage(error?.message || t("未知錯誤")) });
       await persistState();
     }
     if (!stateCache.paused && stateCache.queue.length) scheduleProcessing(250);
@@ -572,7 +572,7 @@ async function retryFailed() {
   assertArticleSelectionIdle();
   const retryItems = uniqueItems([...remoteFailed, ...stateCache.failed]);
   if (!retryItems.length) {
-    stateCache.lastError = "Notion 中目前沒有「分析失敗」的文章可重試。";
+    stateCache.lastError = t("Notion 中目前沒有「分析失敗」的文章可重試。");
     await persistState();
     return publicStatus();
   }

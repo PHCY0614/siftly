@@ -27,7 +27,6 @@ function testNotionWebAndFieldsTips() {
   assert.match(html, /id="fields-view-tip"/);
   assert.match(html, /新欄位可能在既有資料庫檢視中被隱藏/);
   assert.doesNotMatch(html, /Views API|自動取消隱藏/);
-  assert.match(source("options.js"), /若看不到新建欄位，請到 Notion 既有資料庫檢視中把它們顯示出來/);
 }
 
 function testDictionaryButtonFontMatches() {
@@ -80,6 +79,7 @@ function testThemeSuggestionFormatting() {
   const end = optionsJs.indexOf("function updateApplyProgressUi");
   assert.ok(start >= 0 && end > start, "formatter helpers present");
   const sandbox = {
+    t: require(path.join(root, "i18n/index.js")).t,
     console,
     document: {
       createElement(tag) {
@@ -289,12 +289,11 @@ function testRateLimitBackoffAndThrottle() {
   const queue = source("background/queue.js");
   const constants = source("background/constants.js");
   assert.match(constants, /AI_STUDIO_PAGE_GAP_MS = 12000/);
-  assert.match(constants, /已達 Google AI 速率或額度上限，請稍後再繼續/);
   assert.match(transport, /response\.status === 429 && attempt < 4/);
   assert.match(transport, /已達 Google AI 速率或額度上限，請稍後再繼續/);
   assert.match(queue, /AI_STUDIO_PAGE_GAP_MS/);
   assert.match(queue, /等待速率配額/);
-  assert.match(queue, /AI_RATE_LIMIT_USER_MESSAGE/);
+  assert.match(queue, /已達 Google AI 速率或額度上限，請稍後再繼續/);
   assert.doesNotMatch(source("options.html"), /自訂 RPM|faster-vs-steadier|更快與更穩/);
 }
 

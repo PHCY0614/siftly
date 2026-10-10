@@ -301,6 +301,9 @@ input[type="text"], input[type="password"], input[type="number"], select, textar
 .custom-select__option[aria-selected="true"] { background: var(--green-soft); color: var(--green-dark); font-weight: 750; }
 .custom-select__check { color: var(--green); font-weight: 850; }
 .custom-select__check--empty { opacity: 0; }
+/* The interface-language picker in the page header: same control, sized to sit beside the title. */
+.custom-select--compact { width: 190px; margin-left: auto; align-self: center; }
+.custom-select--compact .custom-select__trigger { min-height: 38px; margin-top: 0; padding-top: 6px; padding-bottom: 6px; font-size: 14px; }
 .custom-select--regular .custom-select__trigger,
 .custom-select--regular .custom-select__option,
 .custom-select--regular .custom-select__option[aria-selected="true"] { font-weight: 400; }

@@ -454,6 +454,7 @@ function createAnalysisContext() {
     AnalyzerGemini: G,
     AnalyzerPrompt: P,
     AnalyzerShared: S,
+    t: require(path.join(root, "i18n/index.js")).t,
     console,
     structuredClone,
     setTimeout,

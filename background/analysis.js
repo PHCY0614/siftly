@@ -9,7 +9,7 @@ async function readPageRecords(pageId, token, signal) {
   const nonRecursive = new Set(["child_page", "child_database", "image", "video", "audio", "file", "pdf"]);
 
   async function walk(parentId, depth) {
-    if (depth > 25) throw new AppError("Notion 頁面巢狀層級過深，已停止以避免讀取異常", { code: "BLOCK_DEPTH" });
+    if (depth > 25) throw new AppError(t("Notion 頁面巢狀層級過深，已停止以避免讀取異常"), { code: "BLOCK_DEPTH" });
     let cursor = "";
     do {
       const query = new URLSearchParams({ page_size: "100" });
@@ -21,7 +21,7 @@ async function readPageRecords(pageId, token, signal) {
       for (const block of response.results ?? []) {
         blockCount += 1;
         if (blockCount > MAX_BLOCKS) {
-          throw new AppError(`頁面超過 ${MAX_BLOCKS} 個區塊，為避免失控已停止`, { code: "TOO_MANY_BLOCKS" });
+          throw new AppError(t("頁面超過 {limit} 個區塊，為避免失控已停止", { limit: MAX_BLOCKS }), { code: "TOO_MANY_BLOCKS" });
         }
         records.push(N.blockToRecord(block, depth));
         if (block.has_children && !nonRecursive.has(block.type)) await walk(block.id, depth + 1);
@@ -59,7 +59,7 @@ async function generateAndValidate(
   const diagnostic = { attempts: [], model, provider };
   const initialPayload = G.buildAnalysisRequest(sourcePrompt, model, analysisOptions);
   if (analysisOptions.enforceInputLimit) {
-    await setStage("檢查 AI 輸入", { model, provider });
+    await setStage(t("檢查 AI 輸入"), { model, provider });
     await assertAiInputTokenLimit(provider, model, initialPayload, { apiKey, signal });
   }
   try {
@@ -69,7 +69,7 @@ async function generateAndValidate(
       initialPayload,
       { apiKey, signal, timeoutMinutes: analysisOptions.requestTimeoutMinutes }
     );
-    await setStage("驗證輸出", { model, provider });
+    await setStage(t("驗證輸出"), { model, provider });
     const parsed = G.parseJsonCandidate(firstResponse);
     raw = parsed.raw;
     diagnostic.attempts.push({ attempt: 1, ...G.responseDiagnostic(firstResponse, raw) });
@@ -91,7 +91,7 @@ async function generateAndValidate(
       diagnostic.attempts.push({ attempt: 1, ...G.responseDiagnostic(firstResponse, raw) });
     }
     if (error?.nonRetryable || !raw) {
-      throw new AppError(error.message || "AI 沒有回傳可修正的結果", {
+      throw new AppError(error.message || t("AI 沒有回傳可修正的結果"), {
         code: error?.blockReason ? "CONTENT_BLOCKED" : "OUTPUT_EMPTY",
         diagnostic
       });
@@ -119,7 +119,7 @@ async function generateAndValidate(
       attempt: 2,
       ...G.responseDiagnostic(repairResponse, error.rawOutput || "")
     });
-    throw new AppError(`AI 修正輸出仍無法解析：${error.message}`, {
+    throw new AppError(t("AI 修正輸出仍無法解析：{message}", { message: error.message }), {
       code: "OUTPUT_INVALID",
       diagnostic
     });
@@ -133,7 +133,7 @@ async function generateAndValidate(
     analysisOptions.outputLanguage
   );
   if (!checkedRepair.ok) {
-    throw new AppError(`AI 修正輸出仍未符合規則：${checkedRepair.errors.join("；")}`, {
+    throw new AppError(t("AI 修正輸出仍未符合規則：{errors}", { errors: checkedRepair.errors.join("；") }), {
       code: "OUTPUT_INVALID",
       diagnostic: { ...diagnostic, validationErrorCount: checkedRepair.errors.length }
     });
@@ -157,7 +157,7 @@ async function extractChunkNote(chunk, index, total, provider, model, apiKey, si
     let response = null;
     try {
       response = await timedAiRequest(provider, model, payload, { apiKey, signal, timeoutMinutes: requestTimeoutMinutes });
-      await setStage("驗證輸出", { model, provider });
+      await setStage(t("驗證輸出"), { model, provider });
       const parsed = G.parseJsonCandidate(response);
       diagnostic.attempts.push({ attempt: attempt + 1, ...G.responseDiagnostic(response, parsed.raw) });
       const checked = G.validateChunkNotes(parsed.value);
@@ -182,7 +182,7 @@ async function extractChunkNote(chunk, index, total, provider, model, apiKey, si
       payload = G.buildChunkRepairRequest(error.rawOutput, [error.message || "輸出無法解析"], model, promptOptions);
     }
   }
-  throw new AppError(`第 ${index} 段的 AI 筆記無法解析：${lastError?.message || "未知錯誤"}`, {
+  throw new AppError(t("第 {index} 段的 AI 筆記無法解析：{error}", { index, error: lastError?.message || t("未知錯誤") }), {
     code: "CHUNK_OUTPUT_INVALID",
     diagnostic
   });

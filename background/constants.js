@@ -30,7 +30,6 @@ const TOPIC_ORGANIZER_CACHE_VERSION = 10;
 const TOPIC_ORGANIZER_BATCH_LIMIT = G.TOPIC_ORGANIZER_BATCH_LIMIT;
 // Conservative gap between page-level AI Studio calls (~5 RPM headroom).
 const AI_STUDIO_PAGE_GAP_MS = 12000;
-const AI_RATE_LIMIT_USER_MESSAGE = "已達 Google AI 速率或額度上限，請稍後再繼續";
 const DEFAULT_EXCLUDED_PERSON_TERMS = Object.freeze([]);
 const REQUEUE_TIMEOUT_CODES = new Set([
   "AI_TIMEOUT",
@@ -118,17 +117,21 @@ class AppError extends Error {
   }
 }
 
+// Stored in the saved state as written here; the popup translates it when it shows it.
 const NO_PENDING_PAGES_MESSAGE = "目前沒有待分析文章。可在設定頁使用「準備待分析文章」批次選取，或在 Notion 將文章的整理狀態設為待分析。";
+
+// Interface text in the language chosen on the options page; see i18n/index.js.
+const t = AnalyzerI18n.t;
 
 // ==== Shared guards ====
 // One wording per condition, so every workflow reports it the same way.
 function assertIdle() {
-  if (stateCache?.running) throw new AppError("目前有其他工作正在進行，請先停止或等候完成", { code: "BUSY" });
+  if (stateCache?.running) throw new AppError(t("目前有其他工作正在進行，請先停止或等候完成"), { code: "BUSY" });
 }
 
 // Input the extension's own pages never send. The code tells the cases apart; the user only needs to reload.
 function invalidRequest(code) {
-  return new AppError("操作無效，請重新整理頁面後再試", { code });
+  return new AppError(t("操作無效，請重新整理頁面後再試"), { code });
 }
 
 // ==== Runtime module state ====

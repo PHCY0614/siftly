@@ -34,7 +34,7 @@ async function testVertexModel(config) {
   );
   const data = await readJsonResponse(response);
   if (!response.ok) {
-    throw new AppError(errorMessage(data, `Vertex AI 連線測試錯誤 ${response.status}`), {
+    throw new AppError(errorMessage(data, t("Vertex AI 連線測試錯誤 {status}", { status: response.status })), {
       code: [400, 401, 403].includes(response.status) ? "VERTEX_AUTH" : "VERTEX_API",
       status: response.status
     });
@@ -55,12 +55,12 @@ async function listGeminiModels(apiKey = "") {
         headers: { "x-goog-api-key": key }
       });
     } catch {
-      throw new AppError("無法連線到 Gemini API，請檢查網路後再試", { code: "GEMINI_NETWORK" });
+      throw new AppError(t("無法連線到 {label}，請檢查網路後再試", { label: "Gemini API" }), { code: "GEMINI_NETWORK" });
     }
     const data = await readJsonResponse(response);
     if (!response.ok) {
       const code = [400, 401, 403].includes(response.status) ? "GEMINI_AUTH" : "GEMINI_API";
-      throw new AppError(errorMessage(data, `Gemini API 錯誤 ${response.status}`), {
+      throw new AppError(errorMessage(data, t("Gemini API 錯誤 {status}", { status: response.status })), {
         code,
         status: response.status
       });
@@ -85,7 +85,7 @@ async function listGeminiModels(apiKey = "") {
 async function resolveDataSource(config, token) {
   const rawId = S.extractNotionId(config.notionTarget || config.dataSourceId);
   if (!rawId) {
-    throw new AppError("請填入 Notion 資料庫網址或 Data Source ID", { code: "NOTION_TARGET_MISSING" });
+    throw new AppError(t("請填入 Notion 資料庫網址或 Data Source ID"), { code: "NOTION_TARGET_MISSING" });
   }
 
   try {
@@ -102,10 +102,10 @@ async function resolveDataSource(config, token) {
   const database = await notionRequest(`/v1/databases/${rawId}`, { token });
   const sources = database.data_sources ?? [];
   if (sources.length === 0) {
-    throw new AppError("這個 Notion 資料庫沒有可用的 Data Source", { code: "DATA_SOURCE_MISSING" });
+    throw new AppError(t("這個 Notion 資料庫沒有可用的 Data Source"), { code: "DATA_SOURCE_MISSING" });
   }
   if (sources.length > 1) {
-    throw new AppError("這個資料庫含有多個 Data Source，請改填擷取工具設定頁顯示的 Data Source ID", {
+    throw new AppError(t("這個資料庫含有多個 Data Source，請改填擷取工具設定頁顯示的 Data Source ID"), {
       code: "MULTIPLE_DATA_SOURCES"
     });
   }
@@ -113,13 +113,19 @@ async function resolveDataSource(config, token) {
   return { dataSource, dataSourceId: dataSource.id, databaseId: database.id };
 }
 
-const FIELDS_NOT_READY_MESSAGE = "這個資料庫尚未準備 Siftly 欄位，請到設定頁準備欄位";
+function fieldsNotReadyError() {
+  return new AppError(t("這個資料庫尚未準備 Siftly 欄位，請到設定頁準備欄位"), { code: "NOTION_FIELDS_MISSING" });
+}
 
 // One sentence per conflict, naming the column to fix in Notion.
 function fieldConflictMessage(conflict) {
   return conflict.reason === "duplicate"
-    ? `「${conflict.names.join("」與「")}」同時存在，請只保留一個`
-    : `「${conflict.names[0]}」目前是 ${conflict.actualType || "未知"} 欄位，必須改為 ${conflict.expectedType}`;
+    ? t("「{first}」與「{second}」同時存在，請只保留一個", { first: conflict.names[0], second: conflict.names[1] })
+    : t("「{name}」目前是 {actualType} 欄位，必須改為 {expectedType}", {
+      name: conflict.names[0],
+      actualType: conflict.actualType || t("未知"),
+      expectedType: conflict.expectedType
+    });
 }
 
 /**
@@ -144,7 +150,7 @@ async function inspectNotionFields(config, token) {
     : null;
   const plan = N.resolveColumnMap(resolved.dataSource.properties ?? {}, saved, config.uiLanguage);
   if (plan.conflicts.length) {
-    throw new AppError(`${plan.conflicts.map(fieldConflictMessage).join("；")}。請在 Notion 修正後再試。`, {
+    throw new AppError(t("{conflicts}。請在 Notion 修正後再試。", { conflicts: plan.conflicts.map(fieldConflictMessage).join("；") }), {
       code: "NOTION_FIELDS_INVALID"
     });
   }
@@ -200,7 +206,7 @@ async function readyNotion() {
   try {
     const inspected = await inspectNotionFields(config, token);
     const nextConfig = await saveNotionTarget(config, inspected);
-    if (!inspected.prepared) throw new AppError(FIELDS_NOT_READY_MESSAGE, { code: "NOTION_FIELDS_MISSING" });
+    if (!inspected.prepared) throw fieldsNotReadyError();
     preparedDataSourceId = compactNotionId(nextConfig.dataSourceId);
     return { config: nextConfig, dataSource: inspected.dataSource, fields: N.bindColumns(inspected.plan.map), token };
   } catch (error) {
@@ -235,7 +241,7 @@ async function prepareNotionFields() {
       token
     );
     if (!inspected.prepared) {
-      throw new AppError("Notion 欄位尚未建立完成，請再試一次", { code: "NOTION_FIELDS_MISSING" });
+      throw new AppError(t("Notion 欄位尚未建立完成，請再試一次"), { code: "NOTION_FIELDS_MISSING" });
     }
   }
   await saveNotionTarget(config, inspected);
@@ -255,7 +261,7 @@ async function prepareNotionFields() {
 // The bound operations for the saved data source, for steps that follow a readyNotion() in an earlier call.
 function fieldsFor(config) {
   if (!config.columnMap || compactNotionId(config.columnMap.dataSourceId) !== compactNotionId(config.dataSourceId)) {
-    throw new AppError(FIELDS_NOT_READY_MESSAGE, { code: "NOTION_FIELDS_MISSING" });
+    throw fieldsNotReadyError();
   }
   return N.bindColumns(config.columnMap);
 }
@@ -287,7 +293,7 @@ async function queryPagesByStatus(fields, status, token, options = {}) {
     if (typeof options.onProgress === "function") await options.onProgress(pages.length, status);
     if (pages.length >= maxPages && response.has_more) {
       if (options.failOnLimit) {
-        throw new AppError(`「${N.STATUS_NAMES[status]}」頁面超過 ${maxPages} 筆掃描上限，請先縮小待處理範圍`, {
+        throw new AppError(t("「{status}」頁面超過 {maxPages} 筆掃描上限，請先縮小待處理範圍", { status: t(N.STATUS_NAMES[status]), maxPages }), {
           code: "PAGE_SCAN_LIMIT_EXCEEDED",
           diagnostic: { maxPages, status }
         });
@@ -310,7 +316,7 @@ async function queryPagesByStatus(fields, status, token, options = {}) {
 function resolveNotionTarget(settings, current) {
   const notionTarget = String(settings.notionTarget ?? current.notionTarget).trim();
   if (notionTarget && !S.extractNotionId(notionTarget)) {
-    throw new AppError("Notion 資料庫網址或 Data Source ID 格式不正確", { code: "NOTION_TARGET_INVALID" });
+    throw new AppError(t("Notion 資料庫網址或 Data Source ID 格式不正確"), { code: "NOTION_TARGET_INVALID" });
   }
   return notionTarget;
 }
@@ -341,7 +347,7 @@ function resolvePromptSettings(settings, current) {
 
 function validateSummaryInstructions(value) {
   if (typeof value !== "string" || value.length > P.MAX_SUMMARY_INSTRUCTION_CHARACTERS) {
-    throw new AppError(`摘要指引須為文字，最多 ${P.MAX_SUMMARY_INSTRUCTION_CHARACTERS} 個字元`, {
+    throw new AppError(t("摘要指引須為文字，最多 {limit} 個字元", { limit: P.MAX_SUMMARY_INSTRUCTION_CHARACTERS }), {
       code: "SUMMARY_INSTRUCTIONS_INVALID"
     });
   }
@@ -389,12 +395,12 @@ function resolveTopicPreferences(settings, current, targetChanged, nextTargetId)
  */
 function assertDatabaseChangeAllowed(targetChanged) {
   if (targetChanged && stateCache?.topicReview) {
-    throw new AppError("目前有一篇文章等待確認新主題，請先完成確認再更換 Notion 資料庫", {
+    throw new AppError(t("目前有一篇文章等待確認新主題，請先完成確認再更換 Notion 資料庫"), {
       code: "TOPIC_REVIEW_PENDING"
     });
   }
   if (targetChanged && (stateCache?.running || stateCache?.current)) {
-    throw new AppError("目前仍在分析文章。請先按停止，等目前文章回到待分析後，再更換 Notion 資料庫", {
+    throw new AppError(t("目前仍在分析文章。請先按停止，等目前文章回到待分析後，再更換 Notion 資料庫"), {
       code: "DATABASE_CHANGE_WHILE_RUNNING"
     });
   }
@@ -547,6 +553,13 @@ async function saveSettings(settings) {
 }
 
 // ==== Settings UI and connection diagnostics ====
+// Changes interface text only. Output language, prompts, and existing Notion fields are untouched.
+async function setUiLanguage(language) {
+  if (!AnalyzerI18n.LANGUAGES.includes(language)) throw invalidRequest("UI_LANGUAGE_INVALID");
+  await writeConfig({ ...await readConfig(), uiLanguage: language });
+  return { uiLanguage: AnalyzerI18n.setLanguage(language) };
+}
+
 function aiFingerprint(config) {
   const provider = normalizeAiProvider(config.aiProvider);
   return `${provider}:${provider === "vertex" ? config.vertexModel : config.geminiModel}`;

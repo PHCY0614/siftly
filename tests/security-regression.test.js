@@ -172,7 +172,7 @@ function testBatchAiConfirmHelper() {
   const popup = source("popup.js");
   assert.match(popup, /function confirmBatchAiSend\(/);
   assert.match(popup, /function batchAiSendConfirmMessage\(/);
-  assert.match(popup, /即將分析約 \$\{count\} 頁/);
+  assert.match(popup, /即將分析約 \{count\} 頁/);
   assert.match(popup, /文字會傳送到你選擇的 Google AI/);
   assert.match(popup, /未付費的 AI Studio 可能將內容用於改善產品/);
   assert.match(popup, /RETRY_FAILED is not gated/);

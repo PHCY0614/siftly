@@ -155,12 +155,12 @@ function topicLabelLanguage(name, fallback = "zh-TW") {
 }
 
 function topicLengthDescription(language) {
-  return language === "en" ? "1～4 個英文單字，最多 60 個可見字元" : "2～6 字，並優先使用 2～4 字";
+  return language === "en" ? t("1～4 個英文單字，最多 60 個可見字元") : t("2～6 字，並優先使用 2～4 字");
 }
 
 function assertTopicLabel(name, language) {
   if (G.isOrganizerTopicLabel(name, language)) return;
-  throw new AppError(`主題名稱必須為 ${topicLengthDescription(language)}${name ? `：${name}` : ""}`, {
+  throw new AppError(`${t("主題名稱必須為 {rule}", { rule: topicLengthDescription(language) })}${name ? `：${name}` : ""}`, {
     code: "TOPIC_NAME_INVALID"
   });
 }
@@ -211,7 +211,7 @@ async function initialize() {
       stateCache.running = false;
       stateCache.paused = true;
       stateCache.stopRequested = false;
-      stateCache.lastError = "上次處理在瀏覽器中斷，文章已放回本機佇列；按「繼續」即可重新分析。";
+      stateCache.lastError = t("上次處理在瀏覽器中斷，文章已放回本機佇列；按「繼續」即可重新分析。");
       await persistState();
     } else if (!stateCache.paused && stateCache.queue.length) {
       scheduleProcessing(500);
@@ -227,6 +227,7 @@ async function readConfig() {
   merged.aiProvider = normalizeAiProvider(merged.aiProvider);
   merged.outputSpec = P.normalizeOutputSpec(merged.outputSpec);
   merged.outputLanguage = P.normalizeOutputLanguage(merged.outputLanguage);
+  merged.uiLanguage = AnalyzerI18n.setLanguage(merged.uiLanguage);
   merged.englishOutputSpec = P.normalizeOutputSpec(merged.englishOutputSpec, "en");
   currentOutputLanguage = merged.outputLanguage;
   merged.summaryInstructions = P.normalizeSummaryInstructions(merged.summaryInstructions);
@@ -281,7 +282,7 @@ function rollbackSnapshotSize(snapshot) {
 function assertRollbackSnapshotSize(snapshot) {
   const bytes = rollbackSnapshotSize(snapshot);
   if (bytes <= MAX_PERSISTED_STATE_BYTES) return;
-  throw new AppError("主題回復快照會超過 4 MiB 安全上限，已在寫入 Notion 前停止", {
+  throw new AppError(t("本機狀態超過 4 MiB 上限，已停止寫入；請清除近期紀錄後再試。"), {
     code: "STATE_SIZE_LIMIT",
     diagnostic: { stateBytes: bytes, stateLimitBytes: MAX_PERSISTED_STATE_BYTES }
   });
@@ -302,7 +303,7 @@ async function persistState() {
     bytes = persistedStateBytes(stateCache);
   }
   if (bytes > MAX_PERSISTED_STATE_BYTES) {
-    throw new AppError("本機分析狀態超過 4 MiB 安全上限，已停止寫入；請清除近期紀錄後再重試", {
+    throw new AppError(t("本機狀態超過 4 MiB 上限，已停止寫入；請清除近期紀錄後再試。"), {
       code: "STATE_SIZE_LIMIT",
       diagnostic: { stateBytes: bytes, stateLimitBytes: MAX_PERSISTED_STATE_BYTES }
     });
@@ -344,19 +345,19 @@ async function clearCredentials() {
 
 async function requireNotionToken() {
   const token = await readSecret(NOTION_TOKEN_KEY);
-  if (!token) throw new AppError("尚未設定 Notion Integration Token", { code: "NOTION_TOKEN_MISSING" });
+  if (!token) throw new AppError(t("尚未設定 Notion Integration Token"), { code: "NOTION_TOKEN_MISSING" });
   return token;
 }
 
 async function requireGeminiKey() {
   const key = await readSecret(GEMINI_KEY_KEY);
-  if (!key) throw new AppError("尚未設定 Gemini API Key", { code: "GEMINI_KEY_MISSING" });
+  if (!key) throw new AppError(t("尚未設定 Gemini API Key"), { code: "GEMINI_KEY_MISSING" });
   return key;
 }
 
 async function requireVertexKey() {
   const key = await readSecret(VERTEX_KEY_KEY);
-  if (!key) throw new AppError("尚未設定 Vertex AI API Key", { code: "VERTEX_KEY_MISSING" });
+  if (!key) throw new AppError(t("尚未設定 Vertex AI API Key"), { code: "VERTEX_KEY_MISSING" });
   return key;
 }
 

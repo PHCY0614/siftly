@@ -236,7 +236,7 @@ function testNotionHelpers() {
   });
   assert.equal(
     englishFields.pagePropertyValues({
-      properties: { "Processing Status": { type: "select", select: { name: "Analyzed" } } }
+      properties: { "Processing Status": { type: "select", select: { name: "Analysed" } } }
     }).status,
     N.STATUS.analyzed
   );

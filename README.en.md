@@ -8,7 +8,7 @@ Let AI handle the first pass while you keep the final say over how your knowledg
 
 Siftly is a Chrome extension that helps you organise articles in Notion. It analyses page text, generates a title, summary, keywords and provisional topics in your selected language, and writes the results back to Notion. It is suitable for saved articles, reading notes, research material and social posts.
 
-The interface uses Traditional Chinese (Taiwan). AI output supports Traditional Chinese and English, with Traditional Chinese as the default.
+The interface and the AI output each support Traditional Chinese and English, default to Traditional Chinese, and are set independently: the interface language at the top right of the settings page, the output language under Advanced analysis settings. When Siftly's properties are first created, the property and status-option names follow the interface language at that moment; switching the interface later never renames them.
 
 ## Main features
 
@@ -19,7 +19,7 @@ The interface uses Traditional Chinese (Taiwan). AI output supports Traditional 
 
 `AI 暫定主題` contains provisional classification suggestions; `AI 主題` contains the final topics you have confirmed.
 
-To use English, select it under `進階分析設定 → 輸出語言` (Advanced analysis settings → Output language) and click `儲存設定` (Save settings). Subsequent article analysis and topic organisation will use English. Each language has separate settings for output length and counts; English title and summary lengths are measured in words. Switching languages does not automatically translate existing content or confirmed topic names.
+For English AI output, select it under `Advanced analysis settings → Output language` and click `Save analysis settings`. Subsequent article analysis and topic organisation will use English. Each language has separate settings for output length and counts; English title and summary lengths are measured in words. Switching languages does not automatically translate existing content or confirmed topic names.
 
 ![AI-generated results in a Notion database](docs/images/notion-analysis-results.png)
 
@@ -45,9 +45,9 @@ Manually installed versions do not update automatically. After downloading a new
 ### Connect Notion and AI
 
 1. Create a Notion Internal Integration and share the target database with it through `Add connections`.
-2. Open the extension settings, enter the Notion Integration Token, click `載入可用資料庫` (Load available databases) and select the target database.
-3. Choose an AI provider and model, enter its API key, then click `儲存設定` (Save settings).
-4. Follow the setup progress at the top of the page: after choosing a database click `連接資料庫` (Connect database); after entering a key click `儲存並測試 AI 連線` (Save and test AI connection); then click `建立 Siftly 欄位` (Create Siftly properties). The extension adds the properties and status options the database does not have yet (the page lists the six properties); existing properties are never renamed or overwritten.
+2. Open the extension settings, enter the Notion Integration Token, click `Load available databases`, select the target database, then click `Connect database`. (Button names here are the English interface's; switch the interface language at the top right of the settings page.)
+3. Choose an AI provider and model, enter its API key, then click `Save and test AI connection`.
+4. Click `Create Siftly fields`. The extension adds the properties and status options the database does not have yet (the page lists the six fields); existing properties are never renamed or overwritten. The setup progress at the top of the page shows the step that is still missing.
 
 If the target database is missing from the list, check that it is shared with the Integration. You can also enter its URL or Data Source ID manually in advanced settings.
 

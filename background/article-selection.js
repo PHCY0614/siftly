@@ -5,20 +5,20 @@ let articleSelectionBusy = false;
 
 function assertArticleSelectionIdle() {
   if (articleSelectionBusy) {
-    throw new AppError("正在準備文章，請等候完成後再操作", { code: "ARTICLE_SELECTION_BUSY" });
+    throw new AppError(t("正在準備文章，請等候完成後再操作"), { code: "ARTICLE_SELECTION_BUSY" });
   }
 }
 
 function assertArticleSelectionAllowed() {
   assertArticleSelectionIdle();
   if (stateCache.running || stateCache.current || (!stateCache.paused && stateCache.queue.length)) {
-    throw new AppError("請先停止分析，等目前文章處理完成後再準備文章", { code: "BATCH_RUNNING" });
+    throw new AppError(t("請先停止分析，等目前文章處理完成後再準備文章"), { code: "BATCH_RUNNING" });
   }
 }
 
 function assertSelectionDataSource(actualId, expectedId) {
   if (!S.normalizeUuid(expectedId) || compactNotionId(actualId) !== compactNotionId(expectedId)) {
-    throw new AppError("作用中的資料庫已變更，請重新載入文章清單", { code: "ARTICLE_SELECTION_TARGET_CHANGED" });
+    throw new AppError(t("作用中的資料庫已變更，請重新載入文章清單"), { code: "ARTICLE_SELECTION_TARGET_CHANGED" });
   }
 }
 
@@ -67,7 +67,7 @@ async function listUnanalyzedArticles(options = {}) {
         nextCursor: response.has_more ? response.next_cursor || "" : "",
         hasMore: Boolean(response.has_more && response.next_cursor)
       };
-    }, null, 90000, "ARTICLE_SELECTION_TIMEOUT", "載入文章超過 90 秒，請減少每次載入筆數後重試");
+    }, null, 90000, "ARTICLE_SELECTION_TIMEOUT", t("Notion 回應逾時，請稍後再試。"));
     assertSelectionDataSource((await readConfig()).dataSourceId, config.dataSourceId);
     return result;
   } finally {
@@ -81,7 +81,7 @@ async function setArticleAnalysisStatus(dataSourceId, pageIds, status) {
   }
   if (!Array.isArray(pageIds) || !pageIds.length || pageIds.length > 50
     || pageIds.some(id => typeof id !== "string" || !S.normalizeUuid(id))) {
-    throw new AppError("每次請選取 1～50 篇有效文章", { code: "ARTICLE_SELECTION_PAGES_INVALID" });
+    throw new AppError(t("每次請選取 1～50 篇有效文章"), { code: "ARTICLE_SELECTION_PAGES_INVALID" });
   }
   assertArticleSelectionAllowed();
   articleSelectionBusy = true;
@@ -96,7 +96,7 @@ async function setArticleAnalysisStatus(dataSourceId, pageIds, status) {
     try {
       for (const [index, id] of ids.entries()) {
         if (Date.now() >= deadline) {
-          result.failed.push(...ids.slice(index).map(remaining => ({ id: remaining, message: "本批等待時間已達上限，請重試剩餘文章" })));
+          result.failed.push(...ids.slice(index).map(remaining => ({ id: remaining, message: t("本批等待時間已達上限，請重試剩餘文章") })));
           break;
         }
         try {
@@ -105,24 +105,24 @@ async function setArticleAnalysisStatus(dataSourceId, pageIds, status) {
             const page = await notionRequest(`/v1/pages/${id}`, { token, signal });
             if (compactNotionId(page.id) !== compactNotionId(id)
               || compactNotionId(page.parent?.data_source_id) !== compactNotionId(config.dataSourceId)) {
-              return "文章不屬於目前資料庫";
+              return t("文章不屬於目前資料庫");
             }
-            if (!fields.isUnanalyzedArticle(page)) return "文章已有分析內容或整理狀態，已保留原樣";
+            if (!fields.isUnanalyzedArticle(page)) return t("文章已有分析內容或整理狀態，已保留原樣");
             assertSelectionDataSource((await readConfig()).dataSourceId, config.dataSourceId);
             await notionRequest(`/v1/pages/${id}`, {
               method: "PATCH", body: fields.statusUpdatePayload(status), token, signal
             });
             return "";
-          }, null, 30000, "ARTICLE_SELECTION_WRITE_TIMEOUT", "設定文章狀態逾時，請重新載入確認後再重試");
+          }, null, 30000, "ARTICLE_SELECTION_WRITE_TIMEOUT", t("Notion 回應逾時，請稍後再試。"));
           if (outcome) result.skipped.push({ id, reason: outcome });
           else result.updatedIds.push(id);
         } catch (error) {
-          result.failed.push({ id, message: S.truncateMessage(error.message || "設定失敗", 300) });
+          result.failed.push({ id, message: S.truncateMessage(error.message || t("設定失敗"), 300) });
           // Stop issuing writes if another page/session changed the saved target.
           if (error.code === "ARTICLE_SELECTION_TARGET_CHANGED") {
             for (const remaining of ids) {
               if (![...result.updatedIds, ...result.skipped.map(item => item.id), ...result.failed.map(item => item.id)].includes(remaining)) {
-                result.failed.push({ id: remaining, message: "資料庫已變更，請重新載入文章清單" });
+                result.failed.push({ id: remaining, message: t("資料庫已變更，請重新載入文章清單") });
               }
             }
             break;

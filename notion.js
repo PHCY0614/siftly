@@ -35,10 +35,10 @@
   });
   const STATUS_OPTIONS = Object.freeze({
     pending: { names: { zh: "待分析", en: "Pending" }, color: "yellow" },
-    processing: { names: { zh: "分析中", en: "Analyzing" }, color: "blue" },
-    topicOrganize: { names: { zh: "待主題整理", en: "Topics to organize" }, color: "orange" },
+    processing: { names: { zh: "分析中", en: "Analysing" }, color: "blue" },
+    topicOrganize: { names: { zh: "待主題整理", en: "Topics to organise" }, color: "orange" },
     topicReview: { names: { zh: "待主題確認", en: "Topics to confirm" }, color: "orange" },
-    analyzed: { names: { zh: "已分析", en: "Analyzed" }, color: "green" },
+    analyzed: { names: { zh: "已分析", en: "Analysed" }, color: "green" },
     failed: { names: { zh: "分析失敗", en: "Failed" }, color: "red" },
     skipped: { names: { zh: "不分析", en: "Skipped" }, color: "gray" }
   });

@@ -100,7 +100,7 @@ function testStaticFallbacksMatchDocs() {
   assert.ok(liteIndex < flash38Index, "Vertex curated list should recommend Flash-Lite before 3.8 Flash");
 
   const options = source("options.js");
-  assert.match(options, /model\.name === recommendedName \? "｜建議"/);
+  assert.match(options, /model\.name === recommendedName \? t\("｜建議"\)/);
   assert.doesNotMatch(options, /model\.name === "gemini-3\.5-flash-lite" \? "｜建議"/);
 }
 

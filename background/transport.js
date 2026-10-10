@@ -71,7 +71,7 @@ async function notionRequest(path, options = {}) {
     } catch (error) {
       if (error?.name === "AbortError") throw error;
       if (!retrySafe || attempt >= 3) {
-        throw new AppError("無法連線到 Notion API，請檢查網路後再試", { code: "NOTION_NETWORK" });
+        throw new AppError(t("無法連線到 {label}，請檢查網路後再試", { label: "Notion" }), { code: "NOTION_NETWORK" });
       }
       await abortableSleep(Math.min(2 ** attempt, 8) * 1000, options.signal);
       attempt += 1;
@@ -91,45 +91,45 @@ async function notionRequest(path, options = {}) {
     const code = response.status === 429
       ? "NOTION_RATE_LIMIT"
       : [401, 403].includes(response.status) ? "NOTION_AUTH" : "NOTION_API";
-    throw new AppError(errorMessage(data, `Notion API 錯誤 ${response.status}`), {
+    throw new AppError(errorMessage(data, t("Notion API 錯誤 {status}", { status: response.status })), {
       code,
       retryAfter: Number(response.headers.get("retry-after")) || 0,
       status: response.status
     });
   }
-  throw new AppError("Notion API 重試次數已用完", { code: "NOTION_RETRY_EXHAUSTED" });
+  throw new AppError(t("Notion API 重試次數已用完"), { code: "NOTION_RETRY_EXHAUSTED" });
 }
 
 function safeNotionDataSourceListError(error) {
   if (error?.code === "NOTION_NETWORK") {
-    return new AppError("無法連線到 Notion，請檢查網路後重新整理", { code: "NOTION_NETWORK" });
+    return new AppError(t("無法連線到 {label}，請檢查網路後再試", { label: "Notion" }), { code: "NOTION_NETWORK" });
   }
   if (error?.status === 401) {
-    return new AppError("Notion Token 無效，請重新輸入後再試", {
+    return new AppError(t("Notion Token 無效，請重新輸入後再試"), {
       code: "NOTION_AUTH",
       status: 401
     });
   }
   if (error?.status === 403) {
-    return new AppError("這個 Integration 權限不足，或受到 Notion 工作區限制", {
+    return new AppError(t("這個 Integration 權限不足，或受到 Notion 工作區限制"), {
       code: "NOTION_AUTH",
       status: 403
     });
   }
   if (error?.status === 429 || error?.code === "NOTION_RATE_LIMIT") {
-    return new AppError("Notion 請求過於頻繁，請稍後再重新整理", {
+    return new AppError(t("Notion 請求過於頻繁{wait}，請稍後再繼續", { wait: "" }), {
       code: "NOTION_RATE_LIMIT",
       retryAfter: error?.retryAfter || 0,
       status: 429
     });
   }
   if (error?.status === 529 || (error?.status >= 500 && error?.status < 600)) {
-    return new AppError("Notion 服務暫時無法使用，請稍後再重新整理", {
+    return new AppError(t("Notion 服務暫時無法使用，請稍後再重新整理"), {
       code: "NOTION_API",
       status: error.status
     });
   }
-  return new AppError("無法載入 Notion 資料庫，請稍後再試", {
+  return new AppError(t("無法載入 Notion 資料庫，請稍後再試"), {
     code: error?.code === "NOTION_RETRY_EXHAUSTED" ? "NOTION_RETRY_EXHAUSTED" : "NOTION_API",
     status: error?.status || 0
   });
@@ -139,7 +139,7 @@ async function listNotionDataSources(suppliedToken = "") {
   const oneTimeToken = String(suppliedToken ?? "").trim();
   const token = oneTimeToken || await readSecret(NOTION_TOKEN_KEY);
   if (!token) {
-    throw new AppError("尚未設定 Notion Integration Token", { code: "NOTION_TOKEN_MISSING" });
+    throw new AppError(t("尚未設定 Notion Integration Token"), { code: "NOTION_TOKEN_MISSING" });
   }
 
   const byId = new Map();
@@ -190,7 +190,7 @@ async function listNotionDataSources(suppliedToken = "") {
 async function googleGenerativeRequest(model, payload, options, descriptor) {
   const apiKey = options.apiKey || await descriptor.requireKey();
   const safeModel = S.normalizeModelName(model);
-  if (!safeModel) throw new AppError("AI 模型名稱格式不正確", { code: "MODEL_INVALID" });
+  if (!safeModel) throw new AppError(t("AI 模型名稱格式不正確"), { code: "MODEL_INVALID" });
   let attempt = 0;
   while (attempt < 3) {
     let response;
@@ -210,7 +210,7 @@ async function googleGenerativeRequest(model, payload, options, descriptor) {
     } catch (error) {
       if (error?.name === "AbortError") throw error;
       if (attempt >= 2) {
-        throw new AppError(`無法連線到 ${descriptor.label}，請檢查網路後再試`, { code: `${descriptor.codePrefix}_NETWORK` });
+        throw new AppError(t("無法連線到 {label}，請檢查網路後再試", { label: descriptor.label }), { code: `${descriptor.codePrefix}_NETWORK` });
       }
       await abortableSleep(Math.min(2 ** attempt, 4) * 1000, options.signal);
       attempt += 1;
@@ -241,15 +241,15 @@ async function googleGenerativeRequest(model, payload, options, descriptor) {
     else if (response.status === 404) code = "MODEL_NOT_FOUND";
     const retryAfter = Number(response.headers.get("retry-after")) || 0;
     const message = response.status === 429
-      ? "已達 Google AI 速率或額度上限，請稍後再繼續"
-      : errorMessage(data, `${descriptor.label} 錯誤 ${response.status}`);
+      ? t("已達 Google AI 速率或額度上限，請稍後再繼續")
+      : errorMessage(data, t("{label} 錯誤 {status}", { label: descriptor.label, status: response.status }));
     throw new AppError(message, {
       code,
       retryAfter,
       status: response.status
     });
   }
-  throw new AppError(`${descriptor.label} 重試次數已用完`, { code: `${descriptor.codePrefix}_RETRY_EXHAUSTED` });
+  throw new AppError(t("{label} 重試次數已用完", { label: descriptor.label }), { code: `${descriptor.codePrefix}_RETRY_EXHAUSTED` });
 }
 
 async function geminiRequest(model, payload, options = {}) {
@@ -285,7 +285,7 @@ function payloadTextCharacters(value) {
 
 function assertArticleSize(articleText) {
   if (articleText.length <= MAX_ARTICLE_CHARACTERS) return;
-  throw new AppError(`文章純文字共 ${articleText.length.toLocaleString()} 字元，超過 ${MAX_ARTICLE_CHARACTERS.toLocaleString()} 的安全上限`, {
+  throw new AppError(t("文章純文字共 {characters} 字元，超過 {limit} 的安全上限", { characters: articleText.length.toLocaleString(), limit: MAX_ARTICLE_CHARACTERS.toLocaleString() }), {
     code: "ARTICLE_TOO_LARGE",
     diagnostic: {
       articleCharacters: articleText.length,
@@ -298,7 +298,7 @@ async function assertAiInputTokenLimit(provider, model, payload, options = {}) {
   const inputCharacters = payloadTextCharacters(payload);
   if (inputCharacters < TOKEN_PREFLIGHT_CHARACTERS) return null;
   const safeModel = S.normalizeModelName(model);
-  if (!safeModel) throw new AppError("AI 模型名稱格式不正確", { code: "MODEL_INVALID" });
+  if (!safeModel) throw new AppError(t("AI 模型名稱格式不正確"), { code: "MODEL_INVALID" });
   const apiKey = options.apiKey || (provider === "vertex" ? await requireVertexKey() : await requireGeminiKey());
   const url = provider === "vertex"
     ? `https://aiplatform.googleapis.com/v1/publishers/google/models/${encodeURIComponent(safeModel)}:countTokens`
@@ -319,7 +319,7 @@ async function assertAiInputTokenLimit(provider, model, payload, options = {}) {
     });
   } catch (error) {
     if (error?.name === "AbortError") throw error;
-    throw new AppError("無法確認 AI 輸入 token 數，請檢查網路後再試", {
+    throw new AppError(t("無法連線到 {label}，請檢查網路後再試", { label: provider === "vertex" ? "Vertex AI" : "Gemini API" }), {
       code: provider === "vertex" ? "VERTEX_NETWORK" : "GEMINI_NETWORK"
     });
   }
@@ -329,17 +329,17 @@ async function assertAiInputTokenLimit(provider, model, payload, options = {}) {
     const code = response.status === 429
       ? `${prefix}_RATE_LIMIT`
       : [400, 401, 403].includes(response.status) ? `${prefix}_AUTH` : `${prefix}_API`;
-    throw new AppError(errorMessage(data, `無法確認 AI 輸入 token 數（${response.status}）`), {
+    throw new AppError(errorMessage(data, t("無法確認 AI 輸入 token 數（{status}）", { status: response.status })), {
       code,
       status: response.status
     });
   }
   const totalTokens = Number(data?.totalTokens);
   if (!Number.isFinite(totalTokens) || totalTokens < 0) {
-    throw new AppError("AI 未回傳可辨識的輸入 token 數", { code: "TOKEN_COUNT_INVALID" });
+    throw new AppError(t("AI 未回傳可辨識的輸入 token 數"), { code: "TOKEN_COUNT_INVALID" });
   }
   if (totalTokens > MAX_INPUT_TOKENS) {
-    throw new AppError(`完整 prompt 約 ${totalTokens.toLocaleString()} tokens，超過 ${MAX_INPUT_TOKENS.toLocaleString()} 的安全上限`, {
+    throw new AppError(t("完整 prompt 約 {tokens} tokens，超過 {limit} 的安全上限", { tokens: totalTokens.toLocaleString(), limit: MAX_INPUT_TOKENS.toLocaleString() }), {
       code: "AI_INPUT_TOKEN_LIMIT",
       diagnostic: { inputCharacters, inputTokens: totalTokens, inputTokenLimit: MAX_INPUT_TOKENS }
     });
@@ -376,12 +376,12 @@ async function timedAiRequest(provider, model, payload, options = {}) {
   if (options.signal?.aborted) abortFromParent();
   else options.signal?.addEventListener("abort", abortFromParent, { once: true });
   const timer = timeoutMs ? setTimeout(() => controller.abort(), timeoutMs) : null;
-  await setStage("等待 AI 回應", { model, provider });
+  await setStage(t("等待 AI 回應"), { model, provider });
   try {
     return await aiRequest(provider, model, payload, { ...options, signal: controller.signal });
   } catch (error) {
     if (error?.name === "AbortError" && !parentAborted && timeoutMs) {
-      throw new AppError(`AI 單次請求等待超過 ${minutes} 分鐘，已停止且不會自動重送文章`, {
+      throw new AppError(t("AI 單次請求等待超過 {minutes} 分鐘，已停止且不會自動重送文章", { minutes }), {
         code: "AI_TIMEOUT"
       });
     }
@@ -421,6 +421,6 @@ function notionWriteWithTimeout(path, options, parentSignal) {
     parentSignal,
     60000,
     "NOTION_WRITE_TIMEOUT",
-    "寫回 Notion 超過 60 秒，已停止以避免重複更新"
+    t("Notion 回應逾時，請稍後再試。")
   );
 }

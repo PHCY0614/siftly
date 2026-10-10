@@ -11,7 +11,7 @@ const helperStart = popupSource.indexOf("const PopupPresentation =");
 const helperEnd = popupSource.indexOf("function renderActiveDatabase()", helperStart);
 assert.ok(helperStart >= 0 && helperEnd > helperStart, "popup presentation helper must be loadable");
 
-const context = vm.createContext({});
+const context = vm.createContext({ t: require(path.join(root, "i18n/index.js")).t });
 vm.runInContext(popupSource.slice(helperStart, helperEnd), context, {
   filename: "popup.js#presentation"
 });

@@ -28,7 +28,7 @@ function testSafeNotionPageHref() {
 
   const popup = source("popup.js");
   assert.match(popup, /AnalyzerShared\.safeNotionPageHref\(item\.url\)/);
-  assert.match(source("popup.html"), /<script src="shared\.js"><\/script>/);
+  assert.match(source("popup.html"), /data-scripts="shared\.js,ui-select\.js,popup\.js"/);
 }
 
 function testArticleCapAllowsChunking() {

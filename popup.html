@@ -68,7 +68,7 @@
       </div>
       <label class="replacement-label" for="custom-topic">或自行輸入主題</label>
       <div class="custom-topic-row">
-        <input id="custom-topic" class="review-input" type="text" maxlength="6" placeholder="優先 2～4 字，最多 6 字" autocomplete="off">
+        <input id="custom-topic" class="review-input" type="text" maxlength="6" autocomplete="off">
         <button id="use-custom-topic" class="button secondary" type="button">使用自訂主題</button>
       </div>
       <p id="custom-topic-hint" class="hint">自訂主題最多 6 字，建議使用 2～4 字。</p>
@@ -80,7 +80,7 @@
         <button id="approve-topic" class="button primary" type="button">採用這個主題</button>
         <button id="skip-topic" class="button secondary" type="button">這次暫不處理</button>
       </div>
-      <p class="review-note">候選會逐個顯示。完成分類後會立即寫入主題，並移除對應的暫定主題；暫時略過的項目會保留，且不會再次呼叫 AI。</p>
+      <p class="review-note">逐個確認候選主題；暫時略過的會保留。</p>
     </section>
 
     <section class="actions" aria-label="分析操作">
@@ -103,7 +103,7 @@
       </div>
     </section>
 
-    <footer>文章分析只寫入標題、摘要、關鍵字與暫定主題；最終主題由單篇確認或批次整理另外處理。</footer>
+    <footer>分析只寫入暫定主題；正式主題要另外確認。</footer>
   </main>
   <dialog id="batch-ai-dialog" class="confirm-dialog" aria-labelledby="batch-ai-dialog-title" aria-describedby="batch-ai-dialog-message">
     <form method="dialog" class="confirm-dialog__surface">
@@ -117,8 +117,8 @@
       </div>
     </form>
   </dialog>
-  <script src="shared.js"></script>
-  <script src="ui-select.js"></script>
-  <script src="popup.js"></script>
+  <script src="i18n/en.js"></script>
+  <script src="i18n/index.js"></script>
+  <script src="i18n/page.js" data-scripts="shared.js,ui-select.js,popup.js"></script>
 </body>
 </html>

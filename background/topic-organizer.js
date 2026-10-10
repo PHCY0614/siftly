@@ -29,7 +29,7 @@ async function queryTopicOrganizerPages(fields, token, options = {}) {
     }
     cursor = !done && response.has_more ? response.next_cursor || "" : "";
   } while (cursor);
-  await setStage("掃描 Notion", { progress: pages.length });
+  await setStage(t("掃描 Notion"), { progress: pages.length });
   return pages;
 }
 
@@ -197,7 +197,7 @@ async function requestOrganizerGroups({ aiCandidates, config, controller }) {
     );
   } catch (error) {
     if (!canRetryTopicOrganizerWithoutSchema(error)) throw error;
-    await setStage("改用相容 JSON 模式", { model, provider });
+    await setStage(t("改用相容 JSON 模式"), { model, provider });
     response = await timedAiRequest(
       provider,
       model,
@@ -205,7 +205,7 @@ async function requestOrganizerGroups({ aiCandidates, config, controller }) {
       { apiKey, signal: controller.signal, timeoutMinutes: config.requestTimeoutMinutes }
     );
   }
-  await setStage("驗證暫定主題分組", { model, provider });
+  await setStage(t("驗證暫定主題分組"), { model, provider });
   let invalidRaw = "";
   let checked;
   try {
@@ -218,7 +218,7 @@ async function requestOrganizerGroups({ aiCandidates, config, controller }) {
     checked = { ok: false, errors: [error?.message || "AI 回傳的內容不是有效 JSON"] };
   }
   if (!checked.ok) {
-    await setStage("修復暫定主題分組格式", { model, provider });
+    await setStage(t("修復暫定主題分組格式"), { model, provider });
     const repairedResponse = await timedAiRequest(
       provider,
       model,
@@ -241,7 +241,7 @@ async function requestOrganizerGroups({ aiCandidates, config, controller }) {
       checked = { ok: false, errors: [error?.message || "修復結果不是有效 JSON"] };
     }
     if (!checked.ok) {
-      warnings.push(`模型兩次都未回傳可用格式，本批候選已全部保留未分類：${checked.errors.join("；")}`);
+      warnings.push(t("模型兩次都未回傳可用格式，本批候選已全部保留未分類：{errors}", { errors: checked.errors.join("；") }));
       checked = G.validateTopicOrganizer({ groups: [], unclassified_topics: candidateNames }, candidateNames, [], outputLanguage);
     }
   }
@@ -271,7 +271,7 @@ async function requestTopicStandardMatches({ groups, standards, config, controll
   }));
   const warnings = [];
   let response;
-  await setStage("比對既有 AI 主題", { model, provider });
+  await setStage(t("比對既有 AI 主題"), { model, provider });
   try {
     response = await timedAiRequest(
       provider,
@@ -281,7 +281,7 @@ async function requestTopicStandardMatches({ groups, standards, config, controll
     );
   } catch (error) {
     if (!canRetryTopicOrganizerWithoutSchema(error)) throw error;
-    await setStage("既有主題比對改用相容 JSON 模式", { model, provider });
+    await setStage(t("既有主題比對改用相容 JSON 模式"), { model, provider });
     response = await timedAiRequest(
       provider,
       model,
@@ -289,7 +289,7 @@ async function requestTopicStandardMatches({ groups, standards, config, controll
       { apiKey, signal: controller.signal, timeoutMinutes: config.requestTimeoutMinutes }
     );
   }
-  await setStage("驗證既有主題比對", { model, provider });
+  await setStage(t("驗證既有主題比對"), { model, provider });
   let invalidRaw = "";
   let checked;
   try {
@@ -302,7 +302,7 @@ async function requestTopicStandardMatches({ groups, standards, config, controll
     checked = { ok: false, errors: [error?.message || "AI 回傳的內容不是有效 JSON"] };
   }
   if (!checked.ok) {
-    await setStage("修復既有主題比對格式", { model, provider });
+    await setStage(t("修復既有主題比對格式"), { model, provider });
     const repairedResponse = await timedAiRequest(
       provider,
       model,
@@ -324,7 +324,7 @@ async function requestTopicStandardMatches({ groups, standards, config, controll
       checked = { ok: false, errors: [error?.message || "修復結果不是有效 JSON"] };
     }
     if (!checked.ok) {
-      warnings.push(`既有主題比對兩次都未回傳可用格式，已保留第一階段建議名稱：${checked.errors.join("；")}`);
+      warnings.push(t("既有主題比對兩次都未回傳可用格式，已保留第一階段建議名稱：{errors}", { errors: checked.errors.join("；") }));
       checked = G.validateTopicStandardMatches({ matches: [] }, matcherGroups, standards, outputLanguage);
     }
   }
@@ -470,7 +470,7 @@ async function prepareTopicOrganizer() {
   activeAbortController = controller;
   try {
     const { config, fields, token } = await readyNotion();
-    await setStage("掃描 Notion", { progress: 0 });
+    await setStage(t("掃描 Notion"), { progress: 0 });
     const [pages, options] = await Promise.all([
       queryTopicOrganizerPages(fields, token, { signal: controller.signal }),
       readTopicOptions(config, token, controller.signal)
@@ -707,7 +707,7 @@ function mergeDictionaryEntries(existing, additions) {
 function requireTopicOrganizer() {
   assertIdle();
   if (!stateCache.topicOrganizer?.pages) {
-    throw new AppError("請先產生主題整理建議", { code: "TOPIC_ORGANIZER_MISSING" });
+    throw new AppError(t("請先產生主題整理建議"), { code: "TOPIC_ORGANIZER_MISSING" });
   }
   return stateCache.topicOrganizer;
 }
@@ -734,14 +734,14 @@ async function applyTopicOrganizerGroups(groupsInput = []) {
       aliases
     };
   }).filter(group => group.id && group.standardTopic && group.aliases.length);
-  if (!selected.length) throw new AppError("請至少勾選一組要套用的建議", { code: "NO_TOPIC_GROUP_SELECTED" });
+  if (!selected.length) throw new AppError(t("請至少勾選一組要套用的建議"), { code: "NO_TOPIC_GROUP_SELECTED" });
 
   const aliasMap = new Map();
   for (const group of selected) {
     for (const alias of group.aliases) {
       const key = N.topicKey(alias);
       if (aliasMap.has(key) && aliasMap.get(key) !== group.standardTopic) {
-        throw new AppError(`「${alias}」同時被分到多個標準主題`, { code: "TOPIC_MAPPING_CONFLICT" });
+        throw new AppError(t("「{alias}」同時被分到多個標準主題", { alias }), { code: "TOPIC_MAPPING_CONFLICT" });
       }
       aliasMap.set(key, group.standardTopic);
     }
@@ -904,8 +904,8 @@ async function applyTopicOrganizerGroups(groupsInput = []) {
     ]);
     stateCache.mode = organizer.previousMode || "idle";
     stateCache.lastError = isAbort(error)
-      ? "主題套用已停止；可重新按套用安全續跑，或回復上一次。"
-      : `主題套用遇到錯誤：${S.truncateMessage(error.message || "未知錯誤")}。可重新按套用安全續跑，或回復上一次。`;
+      ? t("主題套用已停止；可重新按套用安全續跑，或回復上一次。")
+      : t("主題套用遇到錯誤：{error}。可重新按套用安全續跑，或回復上一次。", { error: S.truncateMessage(error.message || t("未知錯誤")) });
     throw error;
   } finally {
     if (activeAbortController === controller) activeAbortController = null;
@@ -946,7 +946,7 @@ async function resolveOrganizerUnclassified(candidateName, action, replacementTo
   } else if (action === "replace") {
     selectedTopic = byKey.get(N.topicKey(replacementTopic)) || "";
     if (!selectedTopic) {
-      throw new AppError("請從 Notion 既有主題中選擇", { code: "TOPIC_REPLACEMENT_INVALID" });
+      throw new AppError(t("請從 Notion 既有主題中選擇"), { code: "TOPIC_REPLACEMENT_INVALID" });
     }
   } else if (action === "custom") {
     const custom = S.cleanText(customTopic);
@@ -1090,7 +1090,7 @@ async function resolveOrganizerUnclassified(candidateName, action, replacementTo
 async function rollbackTopicOrganizer() {
   assertIdle();
   const snapshot = stateCache.topicRollback;
-  if (!snapshot?.pages?.length) throw new AppError("目前沒有可回復的上一次套用紀錄", { code: "NO_ROLLBACK" });
+  if (!snapshot?.pages?.length) throw new AppError(t("目前沒有可回復的上一次套用紀錄"), { code: "NO_ROLLBACK" });
   const { config, fields, token } = await readyNotion();
   const options = validTopicOptions(await readTopicOptions(config, token));
   for (const page of snapshot.pages) {
@@ -1152,7 +1152,7 @@ function dictionaryExport(config) {
 
 function previewDictionaryImport(value, config) {
   if (value?.format !== "notion-ai-analyzer-topic-dictionary" || !Array.isArray(value?.topics)) {
-    throw new AppError("這不是有效的主題字典檔案", { code: "DICTIONARY_INVALID" });
+    throw new AppError(t("這不是有效的主題字典檔案"), { code: "DICTIONARY_INVALID" });
   }
   const incoming = normalizeTopicDictionary(value.topics);
   const existing = new Map(normalizeTopicDictionary(config.topicDictionary).map(item => [N.topicKey(item.name), item]));

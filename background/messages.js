@@ -15,6 +15,8 @@ async function handleMessage(message) {
     case "SAVE_SETTINGS":
       if (message.summaryOnly === true) return saveSummaryInstructions(message.settings?.summaryInstructions);
       return saveSettings(message.settings ?? {});
+    case "SET_UI_LANGUAGE":
+      return setUiLanguage(message.language);
     case "TEST_NOTION_CONNECTION":
       return testNotionConnection();
     case "TEST_AI_CONNECTION":
