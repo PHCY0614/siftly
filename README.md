@@ -10,7 +10,7 @@
 
 Siftly 是 Chrome 擴充功能，負責把這堆文章理出頭緒：讀取 Notion 裡的文章，替每篇寫好標題、摘要與關鍵字，再把相近的主題收成分類，交給你確認。考慮到每人的分類偏好不同，AI 只做初步整理，最後怎麼分類交由使用者決定。
 
-![Notion 資料庫中的 AI 分析結果](docs/images/notion-analysis-results.png)
+![Notion 資料庫中的 AI 分析結果](docs/images/results-zh-TW.png)
 
 ## 適合這樣用
 
@@ -28,7 +28,7 @@ Siftly 是 Chrome 擴充功能，負責把這堆文章理出頭緒：讀取 Noti
 
 「AI 暫定主題」是 AI 給的初步建議；「AI 主題」才是你確認後的正式分類。
 
-![AI 產生的主題整理建議](docs/images/topic-suggestions.png)
+![AI 產生的主題整理建議](docs/images/organizer-zh-TW.png)
 
 ### 關於中文輸出的用語
 

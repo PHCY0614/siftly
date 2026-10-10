@@ -10,7 +10,7 @@ Articles keep piling up in Notion, but they rarely get organised. Over time the 
 
 Siftly is a Chrome extension that helps you make sense of the pile. It reads the articles in your Notion database, writes a title, summary and keywords for each, then groups similar topics into categories for you to confirm. The AI only does the first pass; how things get sorted is up to you.
 
-![AI-generated results in a Notion database](docs/images/notion-analysis-results.png)
+![AI-generated results in a Notion database](docs/images/results-en.png)
 
 ## Who it's for
 
@@ -29,7 +29,7 @@ Siftly is a Chrome extension that helps you make sense of the pile. It reads the
 
 Column names follow the interface language in use when Siftly first created them. A database set up in the Chinese interface keeps the names `AI 暫定主題` and `AI 主題`.
 
-![AI-generated topic organisation suggestions](docs/images/topic-suggestions.png)
+![AI-generated topic organisation suggestions](docs/images/organizer-en.png)
 
 ### About Chinese output wording
 
