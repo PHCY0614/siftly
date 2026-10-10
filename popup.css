@@ -297,6 +297,7 @@ button { font: inherit; }
 .remember-topic-row input { margin: 1px 0 0; accent-color: var(--green); }
 .review-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 9px; }
 .review-note { margin: 9px 0 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.hint { margin: 5px 0 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
 
 .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 13px; }
 .actions .wide-action { grid-column: 1 / -1; }
