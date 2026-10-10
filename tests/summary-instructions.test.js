@@ -99,8 +99,6 @@ function createBackgroundContext() {
   const localData = {
     [CONFIG_KEY]: {
       aiProvider: "gemini",
-      analysisPrompt: "legacy prompt must be cleared",
-      analysisPromptCustomized: true,
       geminiModel: "gemini-test",
       vertexModel: "vertex-test",
       notionTarget: "",
@@ -177,8 +175,6 @@ async function testConfigPersistence() {
   assert.equal(initial.data.summaryInstructions, "既有摘要偏好");
   assert.equal(initial.data.analysisPrompt, undefined);
   assert.equal(initial.data.analysisPromptCustomized, undefined);
-  assert.equal(localData[CONFIG_KEY].analysisPrompt, "");
-  assert.equal(localData[CONFIG_KEY].analysisPromptCustomized, false);
 
   const beforeSummaryOnly = structuredClone(localData[CONFIG_KEY]);
   const applied = await send({

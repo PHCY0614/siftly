@@ -49,7 +49,7 @@ function abortableSleep(milliseconds, signal) {
 // ==== Notion transport ====
 async function notionRequest(path, options = {}) {
   if (typeof path !== "string" || !path.startsWith("/v1/")) {
-    throw new AppError("Notion 請求路徑無效", { code: "NOTION_PATH_INVALID" });
+    throw invalidRequest("NOTION_PATH_INVALID");
   }
   const token = options.token || await requireNotionToken();
   const method = options.method || "GET";
@@ -139,7 +139,7 @@ async function listNotionDataSources(suppliedToken = "") {
   const oneTimeToken = String(suppliedToken ?? "").trim();
   const token = oneTimeToken || await readSecret(NOTION_TOKEN_KEY);
   if (!token) {
-    throw new AppError("請先輸入 Notion Integration Token", { code: "NOTION_TOKEN_MISSING" });
+    throw new AppError("尚未設定 Notion Integration Token", { code: "NOTION_TOKEN_MISSING" });
   }
 
   const byId = new Map();
@@ -190,7 +190,7 @@ async function listNotionDataSources(suppliedToken = "") {
 async function googleGenerativeRequest(model, payload, options, descriptor) {
   const apiKey = options.apiKey || await descriptor.requireKey();
   const safeModel = S.normalizeModelName(model);
-  if (!safeModel) throw new AppError(descriptor.modelInvalidMessage, { code: "MODEL_INVALID" });
+  if (!safeModel) throw new AppError("AI 模型名稱格式不正確", { code: "MODEL_INVALID" });
   let attempt = 0;
   while (attempt < 3) {
     let response;
@@ -210,7 +210,7 @@ async function googleGenerativeRequest(model, payload, options, descriptor) {
     } catch (error) {
       if (error?.name === "AbortError") throw error;
       if (attempt >= 2) {
-        throw new AppError(descriptor.networkMessage, { code: `${descriptor.codePrefix}_NETWORK` });
+        throw new AppError(`無法連線到 ${descriptor.label}，請檢查網路後再試`, { code: `${descriptor.codePrefix}_NETWORK` });
       }
       await abortableSleep(Math.min(2 ** attempt, 4) * 1000, options.signal);
       attempt += 1;
@@ -242,14 +242,14 @@ async function googleGenerativeRequest(model, payload, options, descriptor) {
     const retryAfter = Number(response.headers.get("retry-after")) || 0;
     const message = response.status === 429
       ? "已達 Google AI 速率或額度上限，請稍後再繼續"
-      : errorMessage(data, `${descriptor.apiErrorPrefix} ${response.status}`);
+      : errorMessage(data, `${descriptor.label} 錯誤 ${response.status}`);
     throw new AppError(message, {
       code,
       retryAfter,
       status: response.status
     });
   }
-  throw new AppError(descriptor.retryExhaustedMessage, { code: `${descriptor.codePrefix}_RETRY_EXHAUSTED` });
+  throw new AppError(`${descriptor.label} 重試次數已用完`, { code: `${descriptor.codePrefix}_RETRY_EXHAUSTED` });
 }
 
 async function geminiRequest(model, payload, options = {}) {
@@ -259,10 +259,7 @@ async function geminiRequest(model, payload, options = {}) {
       return `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(safeModel)}:generateContent`;
     },
     codePrefix: "GEMINI",
-    networkMessage: "無法連線到 Gemini API，請檢查網路後再試",
-    modelInvalidMessage: "Gemini 模型名稱格式不正確",
-    retryExhaustedMessage: "Gemini API 重試次數已用完",
-    apiErrorPrefix: "Gemini API 錯誤",
+    label: "Gemini API",
     authPattern: /key|credential|permission|api/i
   });
 }
@@ -274,10 +271,7 @@ async function vertexRequest(model, payload, options = {}) {
       return `https://aiplatform.googleapis.com/v1/publishers/google/models/${encodeURIComponent(safeModel)}:generateContent`;
     },
     codePrefix: "VERTEX",
-    networkMessage: "無法連線到 Vertex AI，請檢查網路後再試",
-    modelInvalidMessage: "Vertex AI 模型名稱格式不正確",
-    retryExhaustedMessage: "Vertex AI 重試次數已用完",
-    apiErrorPrefix: "Vertex AI 錯誤",
+    label: "Vertex AI",
     authPattern: /key|credential|permission|api|service account/i
   });
 }

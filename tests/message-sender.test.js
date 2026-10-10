@@ -32,11 +32,8 @@ function storageArea(data) {
 const localData = {
   [CONFIG_KEY]: {
     aiProvider: "gemini",
-    analysisPrompt: "舊版自訂分析提示詞",
-    analysisPromptCustomized: true,
     geminiModel: "gemini-test",
     notionTarget: "",
-    promptBaseVersion: "old",
     rememberGeminiKey: true,
     rememberNotionToken: true,
     rememberVertexKey: false
@@ -131,9 +128,6 @@ async function main() {
   assert.equal(config.data.defaultAnalysisPrompt, undefined);
   assert.equal(config.data.defaultPromptUpdated, undefined);
   assert.equal(config.data.geminiModel, "gemini-test");
-  assert.equal(config.data.customPromptCleared, true);
-  assert.equal(localData[CONFIG_KEY].analysisPrompt, "");
-  assert.equal(localData[CONFIG_KEY].analysisPromptCustomized, false);
   assert.equal(localData[CONFIG_KEY].rememberGeminiKey, true);
 
   const saved = await send({
@@ -147,8 +141,8 @@ async function main() {
   assert.equal(saved.ok, true);
   assert.equal(saved.data.analysisPrompt, undefined);
   assert.equal(saved.data.analysisPromptCustomized, undefined);
-  assert.equal(localData[CONFIG_KEY].analysisPromptCustomized, false);
-  assert.equal(localData[CONFIG_KEY].analysisPrompt, "");
+  assert.equal(localData[CONFIG_KEY].analysisPromptCustomized, undefined);
+  assert.equal(localData[CONFIG_KEY].analysisPrompt, undefined);
   assert.equal(localData[CONFIG_KEY].geminiModel, "gemini-test-2");
   assert.equal(localData[CONFIG_KEY].rememberGeminiKey, true);
   assert.equal(localData[CONFIG_KEY].rememberNotionToken, true);

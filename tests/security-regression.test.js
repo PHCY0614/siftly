@@ -143,8 +143,7 @@ function testAdvancedSettingsHidePromptControls() {
   assert.doesNotMatch(source("background/messages.js"), /GET_PROMPT_PREVIEW/);
   const settings = source("background/settings.js");
   assert.doesNotMatch(settings, /finalPromptPreview|defaultPromptUpdated|defaultAnalysisPrompt/);
-  assert.match(settings, /delete publicConfig\.analysisPrompt/);
-  assert.match(settings, /analysisPrompt: ""/);
+  assert.doesNotMatch(settings, /analysisPrompt/);
   assert.match(source("background/analysis.js"), /customPrompt: ""/);
   assert.doesNotMatch(source("background/analysis.js"), /config\.analysisPromptCustomized/);
 }

@@ -170,6 +170,13 @@ function topicLengthDescription(language) {
   return language === "en" ? "1～4 個英文單字，最多 60 個可見字元" : "2～6 字，並優先使用 2～4 字";
 }
 
+function assertTopicLabel(name, language) {
+  if (G.isOrganizerTopicLabel(name, language)) return;
+  throw new AppError(`主題名稱必須為 ${topicLengthDescription(language)}${name ? `：${name}` : ""}`, {
+    code: "TOPIC_NAME_INVALID"
+  });
+}
+
 // ==== State initialization and persistence ====
 async function initialize() {
   if (initializePromise) return initializePromise;
@@ -179,10 +186,6 @@ async function initialize() {
     } catch {
       // Older Chrome versions may not expose setAccessLevel. No untrusted context is used.
     }
-    await Promise.all([
-      chrome.storage.local.remove(LEGACY_PROVIDER_KEY),
-      chrome.storage.session.remove(LEGACY_PROVIDER_KEY)
-    ]);
     const stored = await chrome.storage.local.get(STATE_KEY);
     stateCache = {
       ...clone(DEFAULT_STATE),
@@ -201,29 +204,14 @@ async function initialize() {
         .slice(0, MAX_PENDING_PAGES);
     }
     stateCache.topicReview = normalizeTopicReview(stateCache.topicReview);
-    const config = await readConfig();
-    if (config.providerReselectionRequired) await writeConfig(config);
+    // Loads the saved output language into currentOutputLanguage before any queued work resumes.
+    await readConfig();
     if (stateCache.topicOrganizer && stateCache.topicOrganizer.version !== TOPIC_ORGANIZER_CACHE_VERSION) {
       stateCache.topicOrganizer = null;
       stateCache.topicRollback = null;
       await persistState();
     }
-    if (stateCache.topicReview && stateCache.topicReview.version !== 2) {
-      const reviewId = stateCache.topicReview.item?.id || "";
-      stateCache.queue = uniqueItems([
-        stateCache.topicReview.item,
-        ...(stateCache.current?.id && stateCache.current.id !== reviewId ? [stateCache.current] : []),
-        ...stateCache.queue
-      ]);
-      stateCache.topicReview = null;
-      stateCache.current = null;
-      stateCache.paused = true;
-      stateCache.mode = "paused";
-      stateCache.running = false;
-      stateCache.stopRequested = false;
-      stateCache.lastError = "舊版尚未確認的文章已放回本機佇列；新版會改用暫定主題流程，按「繼續」即可重新分析。";
-      await persistState();
-    } else if (stateCache.topicReview?.version === 2) {
+    if (stateCache.topicReview) {
       stateCache.current = null;
       stateCache.running = false;
       stateCache.paused = true;
@@ -237,13 +225,6 @@ async function initialize() {
       stateCache.stopRequested = false;
       stateCache.lastError = "上次處理在瀏覽器中斷，文章已放回本機佇列；按「繼續」即可重新分析。";
       await persistState();
-    } else if (config.providerReselectionRequired) {
-      stateCache.paused = true;
-      stateCache.running = false;
-      stateCache.stopRequested = false;
-      stateCache.mode = stateCache.queue.length ? "paused" : stateCache.mode;
-      stateCache.lastError = "舊版 AI 服務已移除。請到設定頁選擇 Google AI Studio 或 Vertex AI 並儲存後，再繼續分析。";
-      await persistState();
     } else if (!stateCache.paused && stateCache.queue.length) {
       scheduleProcessing(500);
     }
@@ -251,29 +232,11 @@ async function initialize() {
   return initializePromise;
 }
 
-function hasLeftoverCustomAnalysisPrompt(config) {
-  return Boolean(config?.analysisPromptCustomized) || Boolean(S.cleanText(config?.analysisPrompt));
-}
-
-function stripCustomAnalysisPrompt(config) {
-  return {
-    ...config,
-    analysisPrompt: "",
-    analysisPromptCustomized: false
-  };
-}
-
 async function readConfig() {
   const stored = await chrome.storage.local.get(CONFIG_KEY);
   const saved = stored[CONFIG_KEY] ?? {};
-  const legacyProvider = saved.aiProvider === "openrouter";
   const merged = { ...clone(DEFAULT_CONFIG), ...saved };
-  merged.aiProvider = legacyProvider ? "gemini" : normalizeAiProvider(merged.aiProvider);
-  merged.providerReselectionRequired = legacyProvider || saved.providerReselectionRequired === true;
-  delete merged.openRouterModel;
-  delete merged.openRouterFreeModelIds;
-  delete merged.openRouterPaidConfirmedModel;
-  delete merged.rememberOpenRouterKey;
+  merged.aiProvider = normalizeAiProvider(merged.aiProvider);
   merged.outputSpec = P.normalizeOutputSpec(merged.outputSpec);
   merged.outputLanguage = P.normalizeOutputLanguage(merged.outputLanguage);
   merged.englishOutputSpec = P.normalizeOutputSpec(merged.englishOutputSpec, "en");
@@ -285,13 +248,7 @@ async function readConfig() {
   merged.preferExistingTopicsByDataSource = normalizeTopicOrganizerPreferences(
     merged.preferExistingTopicsByDataSource
   );
-  if (hasLeftoverCustomAnalysisPrompt(merged)) {
-    customAnalysisPromptCleared = true;
-    const next = stripCustomAnalysisPrompt(merged);
-    await writeConfig(next);
-    return next;
-  }
-  return stripCustomAnalysisPrompt(merged);
+  return merged;
 }
 
 function normalizeTopicDictionary(value) {
@@ -314,12 +271,7 @@ function normalizeTopicDictionary(value) {
 }
 
 async function writeConfig(config) {
-  const next = { ...config };
-  delete next.openRouterModel;
-  delete next.openRouterFreeModelIds;
-  delete next.openRouterPaidConfirmedModel;
-  delete next.rememberOpenRouterKey;
-  await chrome.storage.local.set({ [CONFIG_KEY]: next });
+  await chrome.storage.local.set({ [CONFIG_KEY]: { ...config } });
 }
 
 function persistedStateBytes(state) {
@@ -392,8 +344,8 @@ async function storeSecret(key, suppliedValue, remember) {
 
 async function clearCredentials() {
   await Promise.all([
-    chrome.storage.local.remove([NOTION_TOKEN_KEY, GEMINI_KEY_KEY, VERTEX_KEY_KEY, LEGACY_PROVIDER_KEY]),
-    chrome.storage.session.remove([NOTION_TOKEN_KEY, GEMINI_KEY_KEY, VERTEX_KEY_KEY, LEGACY_PROVIDER_KEY])
+    chrome.storage.local.remove([NOTION_TOKEN_KEY, GEMINI_KEY_KEY, VERTEX_KEY_KEY]),
+    chrome.storage.session.remove([NOTION_TOKEN_KEY, GEMINI_KEY_KEY, VERTEX_KEY_KEY])
   ]);
   const config = await readConfig();
   config.rememberNotionToken = false;
@@ -425,15 +377,7 @@ function normalizeAiProvider(value) {
   return value === "vertex" ? "vertex" : "gemini";
 }
 
-function assertProviderReady(config) {
-  if (!config.providerReselectionRequired) return;
-  throw new AppError("請先到設定頁選擇 Google AI Studio 或 Vertex AI 並儲存", {
-    code: "AI_PROVIDER_RESELECTION_REQUIRED"
-  });
-}
-
 async function activeAiContext(config) {
-  assertProviderReady(config);
   const provider = normalizeAiProvider(config.aiProvider);
   if (provider === "vertex") {
     return {

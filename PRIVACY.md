@@ -55,7 +55,7 @@ Under Google’s Gemini API Additional Terms of Service, content and responses s
 
 Chrome extension storage holds:
 
-- General settings: Notion target ID, AI provider and model names, keyword-exclusion terms, custom summary instructions and output spec, global and per-page topic mappings, and whether to remember keys. Summary instructions are saved when applied and cleared when defaults are restored. The complete built-in analysis prompt is not editable; legacy saved full custom prompts are still cleared.
+- General settings: Notion target ID, AI provider and model names, keyword-exclusion terms, custom summary instructions and output spec, global and per-page topic mappings, and whether to remember keys. Summary instructions are saved when applied and cleared when defaults are restored. The complete built-in analysis prompt is not editable.
 - Run state: latest scanned pending page IDs, the local batch queue, recent results, errors, and pause state. After a successful rescan, the queue is cleared or synced to Notion’s current `待分析` set so stale items are not kept as work.
 - Topic dictionary and organiser session: standard topics, definitions, aliases, colours, enabled flags, permanently discarded provisional topic names, the current suggestion batch, unclassified / temporarily skipped items, and the last apply snapshot used for rollback. Dictionary export does not include keys, tokens, or article text.
 - Failure diagnostics: only on AI output failure, provider, model name, stop reason, numeric token usage, safety categories, output character count, and validation error count. The diagnostic field does not persist raw AI responses or validation-error text; a separate short user-facing failure message is retained for retry and troubleshooting.

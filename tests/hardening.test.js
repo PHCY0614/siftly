@@ -47,8 +47,6 @@ function testRepoLinksAndPromptNotice() {
   assert.match(source("PRIVACY.md"), /https:\/\/github\.com\/PHCY0614\/siftly\/issues/);
   assert.match(source("PRIVACY.zh-TW.md"), /https:\/\/github\.com\/PHCY0614\/siftly\/issues/);
   assert.match(source("options.html"), /https:\/\/github\.com\/PHCY0614\/siftly\/blob\/main\/PRIVACY\.zh-TW\.md/);
-  assert.match(source("options.html"), /id="custom-prompt-cleared-notice"/);
-  assert.match(source("options.html"), /先前儲存的自訂分析指示已停用並清除/);
   assert.doesNotMatch(source("options.js"), /analysisPrompt|promptCustomized|GET_PROMPT_PREVIEW/);
 }
 

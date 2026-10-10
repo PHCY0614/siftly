@@ -106,6 +106,6 @@ async function handleMessage(message) {
       await chrome.runtime.openOptionsPage();
       return { opened: true };
     default:
-      throw new AppError("未知的操作", { code: "UNKNOWN_MESSAGE" });
+      throw invalidRequest("UNKNOWN_MESSAGE");
   }
 }

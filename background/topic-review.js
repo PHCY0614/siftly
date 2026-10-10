@@ -33,7 +33,7 @@ function uniqueTopicNames(values) {
  * remainingCandidates is empty.
  */
 async function resolveTopicReview(action, replacementTopic = "", customTopic = "", rememberMapping = true) {
-  if (stateCache.running) throw new AppError("目前仍在處理文章，請稍後再試", { code: "BUSY" });
+  assertIdle();
   const review = normalizeTopicReview(stateCache.topicReview);
   const currentCandidate = review?.remainingCandidates?.[0];
   if (!review?.item || !currentCandidate?.name) {
@@ -46,12 +46,7 @@ async function resolveTopicReview(action, replacementTopic = "", customTopic = "
   const byKey = new Map(currentOptions.map(option => [N.topicKey(option.name), option.name]));
   const candidate = S.cleanText(currentCandidate.name);
   const outputLanguage = topicSessionLanguage(review);
-  const candidateLanguage = topicLabelLanguage(candidate, outputLanguage);
-  if (action === "approve" && !G.isOrganizerTopicLabel(candidate, candidateLanguage)) {
-    throw new AppError(`建立的新正式主題必須為 ${topicLengthDescription(candidateLanguage)}；若候選名稱不合規，請改用自訂主題`, {
-      code: "TOPIC_CANDIDATE_INVALID"
-    });
-  }
+  if (action === "approve") assertTopicLabel(candidate, topicLabelLanguage(candidate, outputLanguage));
   let topicDecision = action;
   let selectedTopic = "";
 
@@ -62,19 +57,13 @@ async function resolveTopicReview(action, replacementTopic = "", customTopic = "
   } else if (action === "replace") {
     const replacement = byKey.get(N.topicKey(replacementTopic));
     if (!replacement) {
-      throw new AppError("請從目前的 Notion 既有主題中選擇替代項目", {
-        code: "TOPIC_REPLACEMENT_INVALID"
-      });
+      throw new AppError("請從 Notion 既有主題中選擇", { code: "TOPIC_REPLACEMENT_INVALID" });
     }
     selectedTopic = replacement;
     topicDecision = "replaced_with_existing";
   } else if (action === "custom") {
     const custom = S.cleanText(customTopic);
-    if (!G.isOrganizerTopicLabel(custom, outputLanguage)) {
-      throw new AppError(`自訂正式主題必須為 ${topicLengthDescription(outputLanguage)}`, {
-        code: "CUSTOM_TOPIC_INVALID"
-      });
-    }
+    assertTopicLabel(custom, outputLanguage);
     const existingCustom = byKey.get(N.topicKey(custom));
     selectedTopic = existingCustom || custom;
     topicDecision = existingCustom ? "custom_existing" : "custom_new";
@@ -84,7 +73,7 @@ async function resolveTopicReview(action, replacementTopic = "", customTopic = "
   } else if (action === "discard") {
     topicDecision = "discarded";
   } else {
-    throw new AppError("未知的新主題確認操作", { code: "TOPIC_REVIEW_ACTION_INVALID" });
+    throw invalidRequest("TOPIC_REVIEW_ACTION_INVALID");
   }
 
   if (selectedTopic && !byKey.has(N.topicKey(selectedTopic))) {
@@ -189,15 +178,25 @@ function pageBelongsToConfiguredSource(page, config) {
   return Boolean(pageDatabaseId && configuredDatabaseId && pageDatabaseId === configuredDatabaseId);
 }
 
-async function inspectPage(pageId) {
+function requirePageId(pageId) {
   const id = S.extractNotionId(pageId);
   if (!id) throw new AppError("目前分頁不是可辨識的 Notion 頁面", { code: "PAGE_ID_INVALID" });
-  // Popup open and REANALYZE_PAGE identity checks: GET only, no schema PATCH.
-  const { config, token } = await readyNotion({ mutateSchema: false });
+  return id;
+}
+
+async function readConfiguredPage(id, config, token) {
   const page = await notionRequest(`/v1/pages/${id}`, { token });
   if (!pageBelongsToConfiguredSource(page, config)) {
     throw new AppError("這個頁面不屬於目前設定的 Notion 資料庫", { code: "PAGE_OUTSIDE_DATA_SOURCE" });
   }
+  return page;
+}
+
+async function inspectPage(pageId) {
+  const id = requirePageId(pageId);
+  // Popup open and REANALYZE_PAGE identity checks: GET only, no schema PATCH.
+  const { config, token } = await readyNotion({ mutateSchema: false });
+  const page = await readConfiguredPage(id, config, token);
   const values = N.pagePropertyValues(page);
   return {
     ...N.pageSummary(page),
@@ -218,17 +217,11 @@ async function inspectPage(pageId) {
  */
 async function reviewCurrentPageTopics(pageId) {
   ensureNoTopicReview();
-  if (stateCache.running) {
-    throw new AppError("目前正在分析其他文章，請先停止或等候完成", { code: "BUSY" });
-  }
+  assertIdle();
 
-  const id = S.extractNotionId(pageId);
-  if (!id) throw new AppError("頁面 ID 格式不正確", { code: "PAGE_ID_INVALID" });
+  const id = requirePageId(pageId);
   const { config, token } = await readyNotion();
-  const page = await notionRequest(`/v1/pages/${id}`, { token });
-  if (!pageBelongsToConfiguredSource(page, config)) {
-    throw new AppError("這個頁面不屬於目前設定的 Notion 資料庫", { code: "PAGE_OUTSIDE_DATA_SOURCE" });
-  }
+  const page = await readConfiguredPage(id, config, token);
 
   const values = N.pagePropertyValues(page);
   if (![N.STATUS.topicOrganize, N.STATUS.topicReview].includes(values.status)) {
@@ -294,10 +287,8 @@ async function reviewCurrentPageTopics(pageId) {
 async function reanalyzePage(pageId, force = false) {
   assertArticleSelectionIdle();
   ensureNoTopicReview();
-  assertProviderReady(await readConfig());
-  if (stateCache.running) throw new AppError("目前正在分析其他文章，請先停止或等候完成", { code: "BUSY" });
-  const id = S.extractNotionId(pageId);
-  if (!id) throw new AppError("頁面 ID 格式不正確", { code: "PAGE_ID_INVALID" });
+  assertIdle();
+  const id = requirePageId(pageId);
   const inspection = await inspectPage(id);
   assertArticleSelectionIdle();
   if (inspection.analyzed && !force) {

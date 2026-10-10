@@ -36,10 +36,10 @@ async function readArticlePreview(pageId, token, signal) {
 async function listUnanalyzedArticles(options = {}) {
   const cursor = options.cursor ?? "";
   if (typeof cursor !== "string" || cursor.length > 1000) {
-    throw new AppError("文章清單分頁無效，請重新載入", { code: "ARTICLE_SELECTION_CURSOR_INVALID" });
+    throw invalidRequest("ARTICLE_SELECTION_CURSOR_INVALID");
   }
   if (cursor && !options.dataSourceId) {
-    throw new AppError("請先重新載入文章清單", { code: "ARTICLE_SELECTION_TARGET_CHANGED" });
+    throw invalidRequest("ARTICLE_SELECTION_TARGET_CHANGED");
   }
   assertArticleSelectionAllowed();
   articleSelectionBusy = true;
@@ -78,7 +78,7 @@ async function listUnanalyzedArticles(options = {}) {
 
 async function setArticleAnalysisStatus(dataSourceId, pageIds, status) {
   if (![N.STATUS.pending, N.STATUS.skipped].includes(status)) {
-    throw new AppError("只能將所選文章設為待分析或不分析", { code: "ARTICLE_SELECTION_STATUS_INVALID" });
+    throw invalidRequest("ARTICLE_SELECTION_STATUS_INVALID");
   }
   if (!Array.isArray(pageIds) || !pageIds.length || pageIds.length > 50
     || pageIds.some(id => typeof id !== "string" || !S.normalizeUuid(id))) {

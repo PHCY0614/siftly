@@ -296,7 +296,7 @@ async function processItem(item) {
     const expectedSourceId = compactNotionId(config.dataSourceId);
     const queuedSourceId = compactNotionId(item.sourceDataSourceId);
     if (queuedSourceId && queuedSourceId !== expectedSourceId) {
-      throw new AppError("本機佇列屬於先前設定的 Notion 資料庫", {
+      throw new AppError("本機佇列不屬於目前設定的 Notion 資料庫", {
         code: "QUEUE_SOURCE_MISMATCH"
       });
     }
@@ -306,7 +306,7 @@ async function processItem(item) {
         token
       });
       if (!pageBelongsToConfiguredSource(page, config)) {
-        throw new AppError("本機佇列中的頁面不屬於目前設定的 Notion 資料庫", {
+        throw new AppError("本機佇列不屬於目前設定的 Notion 資料庫", {
           code: "QUEUE_SOURCE_MISMATCH"
         });
       }
@@ -480,7 +480,6 @@ async function queueAll() {
   assertArticleSelectionIdle();
   ensureNoTopicReview();
   const config = await readConfig();
-  assertProviderReady(config);
   const cached = stateCache.pendingScan;
   const scannedAt = new Date(cached?.scannedAt || "").getTime();
   const cacheFresh = Number.isFinite(scannedAt)
@@ -545,7 +544,6 @@ async function stopAnalysis() {
 async function resumeAnalysis() {
   assertArticleSelectionIdle();
   ensureNoTopicReview();
-  assertProviderReady(await readConfig());
   assertArticleSelectionIdle();
   stateCache.paused = false;
   stateCache.stopRequested = false;
@@ -565,7 +563,6 @@ async function resumeAnalysis() {
 async function retryFailed() {
   assertArticleSelectionIdle();
   ensureNoTopicReview();
-  assertProviderReady(await readConfig());
   const { config, token } = await readyNotion();
   const remoteFailed = await queryPagesByStatus(config.dataSourceId, N.STATUS.failed, token, {
     maxPages: MAX_FAILED_PAGES_TO_LOAD

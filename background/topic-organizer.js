@@ -468,7 +468,7 @@ function buildOrganizerReviewGroups(groups, candidates) {
  * existing AI 主題. Stores the session in topicOrganizer.
  */
 async function prepareTopicOrganizer() {
-  if (stateCache.running) throw new AppError("目前正在分析文章，請先停止或等候完成", { code: "BUSY" });
+  assertIdle();
   const controller = new AbortController();
   activeAbortController = controller;
   try {
@@ -639,7 +639,7 @@ function topicOrganizerForUi() {
  * or clear topicRollback.
  */
 async function clearTopicOrganizer() {
-  if (stateCache.running) throw new AppError("目前正在處理其他工作，請稍後再清除建議", { code: "BUSY" });
+  assertIdle();
   stateCache.topicOrganizer = null;
   await persistState();
   return topicOrganizerForUi();
@@ -673,7 +673,7 @@ async function skipTopicOrganizerGroup(groupId, groupsInput = []) {
   const organizer = stateCache.topicOrganizer;
   saveTopicOrganizerDrafts(organizer, groupsInput);
   const group = organizer?.groups?.find(item => item.id === groupId);
-  if (!group) throw new AppError("找不到要暫不處理的建議", { code: "TOPIC_GROUP_MISSING" });
+  if (!group) throw invalidRequest("TOPIC_GROUP_MISSING");
   group.skipped = true;
   group.selected = false;
   organizer.unclassified = uniqueTopicNames([...(organizer.unclassified ?? []), ...(group.aliases ?? [])]);
@@ -707,11 +707,16 @@ function mergeDictionaryEntries(existing, additions) {
  * page and retains an incomplete snapshot on interruption or failure. A later
  * apply with the same operationKey resumes from that snapshot.
  */
-async function applyTopicOrganizerGroups(groupsInput = []) {
-  const organizer = stateCache.topicOrganizer;
-  if (!organizer?.pages || stateCache.running) {
-    throw new AppError(stateCache.running ? "目前正在處理其他工作" : "請先產生主題整理建議", { code: "BUSY" });
+function requireTopicOrganizer() {
+  assertIdle();
+  if (!stateCache.topicOrganizer?.pages) {
+    throw new AppError("請先產生主題整理建議", { code: "TOPIC_ORGANIZER_MISSING" });
   }
+  return stateCache.topicOrganizer;
+}
+
+async function applyTopicOrganizerGroups(groupsInput = []) {
+  const organizer = requireTopicOrganizer();
   const storedGroups = new Map((organizer.groups ?? []).map(group => [group.id, group]));
   const selected = (groupsInput ?? []).filter(group => group?.selected).map(group => {
     const id = S.cleanText(group.id).slice(0, 120);
@@ -751,12 +756,7 @@ async function applyTopicOrganizerGroups(groupsInput = []) {
   const newStandards = uniqueTopicNames(selected.map(group => group.standardTopic))
     .filter(name => !optionKeys.has(N.topicKey(name)));
   const outputLanguage = topicSessionLanguage(organizer);
-  const invalidNewStandards = newStandards.filter(name => !G.isOrganizerTopicLabel(name, outputLanguage));
-  if (invalidNewStandards.length) {
-    throw new AppError(`主題整理新增的分類名稱必須為 ${topicLengthDescription(outputLanguage)}：${invalidNewStandards.join("、")}`, {
-      code: "ORGANIZER_TOPIC_LENGTH_INVALID"
-    });
-  }
+  for (const name of newStandards) assertTopicLabel(name, outputLanguage);
   if (newStandards.length) {
     await notionRequest(`/v1/data_sources/${config.dataSourceId}`, {
       method: "PATCH",
@@ -927,13 +927,10 @@ async function applyTopicOrganizerGroups(groupsInput = []) {
  * Does not call AI. readyNotion may update missing schema.
  */
 async function resolveOrganizerUnclassified(candidateName, action, replacementTopic = "", customTopic = "") {
-  const organizer = stateCache.topicOrganizer;
-  if (!organizer?.pages || stateCache.running) {
-    throw new AppError(stateCache.running ? "目前正在處理其他工作" : "請先產生主題整理建議", { code: "BUSY" });
-  }
+  const organizer = requireTopicOrganizer();
   const candidate = (organizer.unclassified ?? [])
     .find(name => N.topicKey(name) === N.topicKey(candidateName));
-  if (!candidate) throw new AppError("找不到要人工處理的暫存主題", { code: "MANUAL_TOPIC_MISSING" });
+  if (!candidate) throw invalidRequest("MANUAL_TOPIC_MISSING");
   if (action === "skip") {
     organizer.manualSkipped = uniqueTopicNames([...(organizer.manualSkipped ?? []), candidate]);
     organizer.status = "review";
@@ -947,24 +944,19 @@ async function resolveOrganizerUnclassified(candidateName, action, replacementTo
   let selectedTopic = "";
   const outputLanguage = topicSessionLanguage(organizer);
   if (action === "approve") {
-    const candidateLanguage = topicLabelLanguage(candidate, outputLanguage);
-    if (!G.isOrganizerTopicLabel(candidate, candidateLanguage)) {
-      throw new AppError(`建立的新正式主題必須為 ${topicLengthDescription(candidateLanguage)}，請改用自訂名稱`, { code: "MANUAL_TOPIC_INVALID" });
-    }
+    assertTopicLabel(candidate, topicLabelLanguage(candidate, outputLanguage));
     selectedTopic = byKey.get(N.topicKey(candidate)) || candidate;
   } else if (action === "replace") {
     selectedTopic = byKey.get(N.topicKey(replacementTopic)) || "";
     if (!selectedTopic) {
-      throw new AppError("請從目前的 Notion 既有主題中選擇對應項目", { code: "MANUAL_REPLACEMENT_INVALID" });
+      throw new AppError("請從 Notion 既有主題中選擇", { code: "TOPIC_REPLACEMENT_INVALID" });
     }
   } else if (action === "custom") {
     const custom = S.cleanText(customTopic);
-    if (!G.isOrganizerTopicLabel(custom, outputLanguage)) {
-      throw new AppError(`自訂正式主題必須為 ${topicLengthDescription(outputLanguage)}`, { code: "MANUAL_CUSTOM_INVALID" });
-    }
+    assertTopicLabel(custom, outputLanguage);
     selectedTopic = byKey.get(N.topicKey(custom)) || custom;
   } else if (action !== "discard") {
-    throw new AppError("未知的人工主題處理方式", { code: "MANUAL_TOPIC_ACTION_INVALID" });
+    throw invalidRequest("MANUAL_TOPIC_ACTION_INVALID");
   }
 
   if (selectedTopic && !byKey.has(N.topicKey(selectedTopic))) {
@@ -1099,7 +1091,7 @@ async function resolveOrganizerUnclassified(candidateName, action, replacementTo
  * applied-candidate count are also restored. Does not call AI.
  */
 async function rollbackTopicOrganizer() {
-  if (stateCache.running) throw new AppError("請先停止目前的主題套用", { code: "BUSY" });
+  assertIdle();
   const snapshot = stateCache.topicRollback;
   if (!snapshot?.pages?.length) throw new AppError("目前沒有可回復的上一次套用紀錄", { code: "NO_ROLLBACK" });
   const { config, token } = await readyNotion();

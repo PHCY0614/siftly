@@ -13,8 +13,6 @@ const STATE_KEY = "notionAiAnalyzerState";
 const NOTION_TOKEN_KEY = "notionAiAnalyzerNotionToken";
 const GEMINI_KEY_KEY = "notionAiAnalyzerGeminiKey";
 const VERTEX_KEY_KEY = "notionAiAnalyzerVertexKey";
-// Retained only to erase credentials saved by older releases.
-const LEGACY_PROVIDER_KEY = "notionAiAnalyzerOpenRouterKey";
 const PROCESS_ALARM = "notion-ai-analyzer-process";
 const MAX_BLOCKS = 10000;
 const MAX_RECENT = 40;
@@ -28,7 +26,6 @@ const TOKEN_PREFLIGHT_CHARACTERS = 80000;
 const MAX_PENDING_PAGES = 2000;
 const MAX_NOTION_DATA_SOURCES = 300;
 const MAX_PERSISTED_STATE_BYTES = 4 * 1024 * 1024;
-const CURRENT_PROMPT_VERSION = "2026-08-26-1";
 const TOPIC_ORGANIZER_CACHE_VERSION = 10;
 const TOPIC_ORGANIZER_BATCH_LIMIT = G.TOPIC_ORGANIZER_BATCH_LIMIT;
 // Conservative gap between page-level AI Studio calls (~5 RPM headroom).
@@ -50,7 +47,6 @@ const SETUP_ERROR_CODES = new Set([
   "GEMINI_KEY_MISSING",
   "VERTEX_AUTH",
   "VERTEX_KEY_MISSING",
-  "AI_PROVIDER_RESELECTION_REQUIRED",
   "MODEL_INVALID",
   "MODEL_NOT_FOUND",
   "SCHEMA_INVALID",
@@ -66,9 +62,6 @@ const SETUP_ERROR_CODES = new Set([
 const DEFAULT_CONFIG = Object.freeze({
   aiProvider: "gemini",
   allowTopicProposals: true,
-  analysisPrompt: "",
-  analysisPromptCustomized: false,
-  promptBaseVersion: CURRENT_PROMPT_VERSION,
   dataSourceId: "",
   databaseId: "",
   discardedTopicNames: [],
@@ -87,8 +80,7 @@ const DEFAULT_CONFIG = Object.freeze({
   preferExistingTopicsByDataSource: {},
   topicAliases: {},
   topicPageResolutions: {},
-  topicDictionary: [],
-  providerReselectionRequired: false
+  topicDictionary: []
 });
 
 const DEFAULT_STATE = Object.freeze({
@@ -122,11 +114,21 @@ class AppError extends Error {
   }
 }
 
+// ==== Shared guards ====
+// One wording per condition, so every workflow reports it the same way.
+function assertIdle() {
+  if (stateCache?.running) throw new AppError("目前有其他工作正在進行，請先停止或等候完成", { code: "BUSY" });
+}
+
+// Input the extension's own pages never send. The code tells the cases apart; the user only needs to reload.
+function invalidRequest(code) {
+  return new AppError("操作無效，請重新整理頁面後再試", { code });
+}
+
 // ==== Runtime module state ====
 let initializePromise = null;
 let stateCache = null;
 let activeAbortController = null;
 let processingPromise = null;
 let preparedDataSourceId = "";
-let customAnalysisPromptCleared = false;
 let currentOutputLanguage = "zh-TW";

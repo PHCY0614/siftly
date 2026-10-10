@@ -326,18 +326,8 @@ function resolveNotionTarget(settings, current) {
 }
 
 function resolveProviderSelection(settings, current) {
-  if (current.providerReselectionRequired && !Object.hasOwn(settings, "aiProvider")) {
-    throw new AppError("舊版 AI 服務已移除，請明確選擇 Google AI Studio 或 Vertex AI", {
-      code: "AI_PROVIDER_RESELECTION_REQUIRED"
-    });
-  }
-  const requestedProvider = settings.aiProvider ?? current.aiProvider;
-  if (!["gemini", "vertex"].includes(requestedProvider)) {
-    throw new AppError("AI 服務商僅支援 Google AI Studio 或 Vertex AI", {
-      code: "AI_PROVIDER_INVALID"
-    });
-  }
-  const aiProvider = requestedProvider;
+  const aiProvider = settings.aiProvider ?? current.aiProvider;
+  if (!["gemini", "vertex"].includes(aiProvider)) throw invalidRequest("AI_PROVIDER_INVALID");
   const geminiModel = S.normalizeModelName(settings.geminiModel ?? current.geminiModel) || G.DEFAULT_MODEL;
   const vertexModel = S.normalizeModelName(settings.vertexModel ?? current.vertexModel) || G.DEFAULT_MODEL;
   return {
@@ -351,28 +341,12 @@ function resolvePromptSettings(settings, current) {
   const outputSpec = P.normalizeOutputSpec(settings.outputSpec ?? current.outputSpec);
   const englishOutputSpec = P.normalizeOutputSpec(settings.englishOutputSpec ?? current.englishOutputSpec, "en");
   const outputLanguage = P.normalizeOutputLanguage(settings.outputLanguage ?? current.outputLanguage);
-  // Custom-prompt UI is gone. Ignore analysisPrompt / analysisPromptCustomized
-  // from SAVE_SETTINGS so a partial or forged message cannot restore a hidden
-  // prompt. Leftovers are cleared on readConfig and again here on save.
-  if (
-    hasLeftoverCustomAnalysisPrompt(current)
-    || Object.hasOwn(settings, "analysisPrompt")
-    || Object.hasOwn(settings, "analysisPromptCustomized")
-  ) {
-    if (
-      hasLeftoverCustomAnalysisPrompt(current)
-      || Boolean(S.cleanText(settings.analysisPrompt))
-      || Boolean(settings.analysisPromptCustomized)
-    ) {
-      customAnalysisPromptCleared = true;
-    }
-  }
   const timeoutValue = Number(settings.requestTimeoutMinutes ?? current.requestTimeoutMinutes);
   const requestTimeoutMinutes = [0, 3, 5, 10].includes(timeoutValue) ? timeoutValue : 5;
   const summaryInstructions = settings.summaryInstructions === undefined
     ? P.normalizeSummaryInstructions(current.summaryInstructions)
     : validateSummaryInstructions(settings.summaryInstructions);
-  return { analysisPrompt: "", analysisPromptCustomized: false, outputSpec, englishOutputSpec, outputLanguage, requestTimeoutMinutes, summaryInstructions };
+  return { outputSpec, englishOutputSpec, outputLanguage, requestTimeoutMinutes, summaryInstructions };
 }
 
 function validateSummaryInstructions(value) {
@@ -444,11 +418,7 @@ function buildNextConfig(settings, current, resolved) {
     excludedPersonTerms: settings.excludedPersonTerms === undefined
       ? normalizeExcludedPersonTerms(current.excludedPersonTerms)
       : normalizeExcludedPersonTerms(settings.excludedPersonTerms),
-    analysisPrompt: promptSettings.analysisPrompt,
-    analysisPromptCustomized: promptSettings.analysisPromptCustomized,
-    promptBaseVersion: CURRENT_PROMPT_VERSION,
     aiProvider: provider.aiProvider,
-    providerReselectionRequired: false,
     notionTarget,
     geminiModel: provider.geminiModel,
     vertexModel: provider.vertexModel,
@@ -514,19 +484,14 @@ function buildSaveResponse(next, resolved) {
   const { clearedQueueCount, preferExistingTopics, provider, secrets, targetChanged } = resolved;
   const { aiProvider, geminiModel, vertexModel } = provider;
   const { hasGeminiKey, hasNotionToken, hasVertexKey } = secrets;
-  const publicNext = { ...next };
-  delete publicNext.analysisPrompt;
-  delete publicNext.analysisPromptCustomized;
-  delete publicNext.promptBaseVersion;
   return {
-    ...publicNext,
+    ...next,
     preferExistingTopics,
     activeModel: aiProvider === "vertex" ? vertexModel : geminiModel,
     hasAiKey: aiProvider === "vertex" ? hasVertexKey : hasGeminiKey,
     hasGeminiKey,
     hasNotionToken,
     hasVertexKey,
-    customPromptCleared: customAnalysisPromptCleared,
     databaseChanged: targetChanged,
     clearedQueueCount
   };
@@ -591,9 +556,7 @@ async function saveSettings(settings) {
  * Does not return Notion token or AI key values; exposes hasNotionToken and
  * has*Key booleans. Spreads ids, models, topic dictionary,
  * discardedTopicNames, and preferExistingTopicsByDataSource, and adds
- * preferExistingTopics for the current data source. Custom analysis-prompt
- * fields are never returned. customPromptCleared is true after a leftover
- * hidden prompt was detected and cleared in this service-worker lifetime.
+ * preferExistingTopics for the current data source.
  * Does not call Notion or AI.
  */
 async function getConfigForUi() {
@@ -604,17 +567,12 @@ async function getConfigForUi() {
     readSecret(VERTEX_KEY_KEY)
   ]);
   const aiProvider = normalizeAiProvider(config.aiProvider);
-  const publicConfig = { ...config };
-  delete publicConfig.analysisPrompt;
-  delete publicConfig.analysisPromptCustomized;
-  delete publicConfig.promptBaseVersion;
   return {
-    ...publicConfig,
+    ...config,
     preferExistingTopics: topicOrganizerPreference(config),
     aiProvider,
     activeModel: aiProvider === "vertex" ? config.vertexModel : config.geminiModel,
     excludedPersonTerms: normalizeExcludedPersonTerms(config.excludedPersonTerms),
-    customPromptCleared: customAnalysisPromptCleared,
     hasAiKey: aiProvider === "vertex" ? Boolean(vertexKey) : Boolean(geminiKey),
     hasGeminiKey: Boolean(geminiKey),
     hasNotionToken: Boolean(notionToken),
