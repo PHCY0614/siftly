@@ -34,3 +34,6 @@ build/
 .DS_Store
 Thumbs.db
 Desktop.ini
+
+# Local store listing drafts, kept out of the repo
+store/
