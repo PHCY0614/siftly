@@ -17,10 +17,19 @@ function testManifestBrand() {
   const manifest = JSON.parse(source("manifest.json"));
   assert.equal(manifest.name, "Siftly");
   assert.equal(manifest.action.default_title, "Siftly");
-  assert.equal(manifest.description, EN_SUBTITLE);
-  assert.match(manifest.description, /Organiser/);
-  assert.doesNotMatch(manifest.description, /Organizer/);
-  assert.ok(manifest.description.length <= 132, "Chrome Web Store short description limit is 132 characters");
+  assert.equal(manifest.default_locale, "en");
+  assert.equal(manifest.description, "__MSG_extDescription__");
+  const subtitles = {
+    en: JSON.parse(source("_locales/en/messages.json")).extDescription.message,
+    zh_TW: JSON.parse(source("_locales/zh_TW/messages.json")).extDescription.message
+  };
+  assert.equal(subtitles.en, EN_SUBTITLE);
+  assert.equal(subtitles.zh_TW, ZH_SUBTITLE);
+  assert.match(subtitles.en, /Organiser/);
+  assert.doesNotMatch(subtitles.en, /Organizer/);
+  for (const [locale, text] of Object.entries(subtitles)) {
+    assert.ok(text.length <= 132, `${locale}: Chrome Web Store short description limit is 132 characters`);
+  }
 }
 
 function testUserFacingCopy() {

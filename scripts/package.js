@@ -35,6 +35,7 @@ const RUNTIME_ENTRIES = [
   "options.css",
   "options.js",
   "i18n",
+  "_locales",
   "assets/icons/icon16.png",
   "assets/icons/icon32.png",
   "assets/icons/icon48.png",
