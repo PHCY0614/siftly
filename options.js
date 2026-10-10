@@ -1,7 +1,7 @@
 "use strict";
 
 // Interface text in the saved language; i18n/page.js has already translated the static page.
-const { t } = globalThis.AnalyzerI18n;
+const { t, displayTitle } = globalThis.AnalyzerI18n;
 
 // ==== DOM references and local UI state ====
 const form = document.querySelector("#settings-form");
@@ -394,7 +394,7 @@ function renderArticleCandidates() {
     checkbox.type = "checkbox";
     checkbox.checked = articleSelectedIds.has(page.id);
     checkbox.disabled = settingsBusy || articleListBusy || articleActionBusy;
-    checkbox.setAttribute("aria-label", t("選取文章：{title}", { title: page.title || t("未命名文章") }));
+    checkbox.setAttribute("aria-label", t("選取文章：{title}", { title: displayTitle(page.title) || t("未命名文章") }));
     checkbox.addEventListener("change", () => {
       if (checkbox.checked) articleSelectedIds.add(page.id);
       else articleSelectedIds.delete(page.id);
@@ -411,10 +411,10 @@ function renderArticleCandidates() {
       link.href = safeUrl;
       link.target = "_blank";
       link.rel = "noreferrer";
-      link.textContent = page.title || t("未命名文章");
+      link.textContent = displayTitle(page.title) || t("未命名文章");
       title.append(link);
     } else {
-      title.textContent = page.title || t("未命名文章");
+      title.textContent = displayTitle(page.title) || t("未命名文章");
     }
     const preview = document.createElement("p");
     preview.className = "article-candidate__preview";
@@ -797,7 +797,7 @@ function showNotionDataSourceStatus(message, kind = "info") {
 function dataSourceOptionLabel(dataSource, duplicateTitles) {
   const titleKey = dataSource.title.toLocaleLowerCase("zh-Hant-TW");
   const duplicateSuffix = duplicateTitles.get(titleKey) > 1 ? ` · ${shortNotionId(dataSource.id)}` : "";
-  return `${dataSource.emoji ? `${dataSource.emoji} ` : ""}${dataSource.title}${duplicateSuffix}`;
+  return `${dataSource.emoji ? `${dataSource.emoji} ` : ""}${displayTitle(dataSource.title)}${duplicateSuffix}`;
 }
 
 function renderNotionDataSources(dataSources, limitReached) {
@@ -1901,10 +1901,15 @@ function renderSetup(setup) {
   // Only a verified connection has actually read the database; before that the fields are unknown, not absent.
   const fieldsUnknown = !fieldsReady && setup.notion !== "verified";
   const fieldsLabel = fieldsReady ? t("已就緒") : fieldsUnknown ? t("尚未檢查") : t("尚未建立");
-  for (const [key, state] of Object.entries(setup)) {
+  // A verified connection is named, so the summary says which database the rest applies to.
+  const notionLabel = setup.notion === "verified" && setup.databaseTitle
+    ? `${displayTitle(setup.databaseTitle)} · ${setupStateLabel(setup.notion)}`
+    : setupStateLabel(setup.notion);
+  const labels = { notion: notionLabel, ai: setupStateLabel(setup.ai), fields: fieldsLabel };
+  for (const [key, label] of Object.entries(labels)) {
     const item = document.querySelector(`[data-setup-item="${key}"]`);
-    item.dataset.state = state === "verified" || state === "ready" ? "done" : state;
-    item.querySelector(".setup-summary__state").textContent = key === "fields" ? fieldsLabel : setupStateLabel(state);
+    item.dataset.state = setup[key] === "verified" || setup[key] === "ready" ? "done" : setup[key];
+    item.querySelector(".setup-summary__state").textContent = label;
   }
   if (setup.notion === "missing") {
     nextSetupStep = { text: t("下一步：貼上 Notion Token 並選擇資料庫"), action: t("前往連接 Notion"), run: () => revealSection("notion-settings") };
@@ -1923,8 +1928,8 @@ function renderSetup(setup) {
   setupNextAction.textContent = nextSetupStep.action;
   setupNextAction.hidden = false;
 
-  setSectionSummary("notion-settings", setupStateLabel(setup.notion));
-  setSectionSummary("ai-settings", setupStateLabel(setup.ai));
+  setSectionSummary("notion-settings", labels.notion);
+  setSectionSummary("ai-settings", labels.ai);
   setSectionSummary("notion-fields", fieldsLabel);
   setSectionSummary("topic-organizer-panel", fieldsReady ? "" : t("準備欄位並分析文章後才有主題可整理"));
   autoCollapseSection("notion-settings", setup.notion === "verified");
@@ -1961,7 +1966,7 @@ async function prepareNotionFieldsFromUi() {
     const created = [...prepared.addedColumns, ...prepared.addedOptions];
     showStatus(created.length
       ? t("已在「{title}」建立：{created}。", {
-        title: prepared.title || t("Notion 資料庫"),
+        title: displayTitle(prepared.title) || t("Notion 資料庫"),
         created: created.join(t("、"))
       })
       : t("欄位已齊全，不需要修改 Notion。"), "success", connectionStatus);
@@ -1982,7 +1987,7 @@ async function connectNotionFromUi() {
     const result = await send("TEST_NOTION_CONNECTION");
     showNotionDataSourceStatus(
       t("已連接「{title}」。{next}", {
-        title: result.title || t("Notion 資料庫"),
+        title: displayTitle(result.title) || t("Notion 資料庫"),
         next: result.fieldsReady ? t("Siftly 欄位已就緒。") : t("接著請到「準備 Notion 欄位」建立欄位。")
       }),
       "success"

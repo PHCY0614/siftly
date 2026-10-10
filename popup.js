@@ -1,7 +1,7 @@
 "use strict";
 
 // Interface text in the saved language; i18n/page.js has already translated the static page.
-const { t } = globalThis.AnalyzerI18n;
+const { t, displayTitle } = globalThis.AnalyzerI18n;
 
 const setupWarning = document.querySelector("#setup-warning");
 const runStatus = document.querySelector("#run-status");
@@ -295,7 +295,7 @@ function renderRecent(items) {
     const safeHref = AnalyzerShared.safeNotionPageHref(item.url);
     const title = document.createElement(safeHref ? "a" : "span");
     title.className = "recent-title";
-    title.textContent = item.title || t("未命名文章");
+    title.textContent = displayTitle(item.title) || t("未命名文章");
     if (safeHref) {
       title.href = safeHref;
       title.target = "_blank";
@@ -366,7 +366,7 @@ function renderTopicReview(review) {
   applyTopicLanguageUi(inferTopicLanguage(review, statusOutputLanguage()));
 
   const item = review.item || {};
-  reviewPageTitle.textContent = item.title || t("未命名文章");
+  reviewPageTitle.textContent = displayTitle(item.title) || t("未命名文章");
   const safeHref = AnalyzerShared.safeNotionPageHref(item.url);
   if (safeHref) {
     reviewPageTitle.href = safeHref;
@@ -432,7 +432,9 @@ function renderTopicReview(review) {
 }
 
 const PopupPresentation = Object.freeze({
+  // The database's name once it has been read from Notion; a short id before that.
   activeDatabaseLabel({ config = {}, currentPageInfo = {} } = {}) {
+    if (config.dataSourceTitle) return t("作用中資料庫：{database}", { database: displayTitle(config.dataSourceTitle) });
     const identity = [
       config.dataSourceId,
       config.databaseId,
@@ -497,9 +499,9 @@ const PopupPresentation = Object.freeze({
     if (bucket === "idle" && !initial && ["running", "review"].includes(previousBucket)) {
       message = t("分析已結束，目前待命。");
     } else if (bucket === "running") {
-      message = t("分析開始：{title}。", { title: state.current?.title || t("目前文章") });
+      message = t("分析開始：{title}。", { title: displayTitle(state.current?.title) || t("目前文章") });
     } else if (bucket === "review") {
-      message = t("等待確認主題：{title}。", { title: state.topicReview?.item?.title || t("目前文章") });
+      message = t("等待確認主題：{title}。", { title: displayTitle(state.topicReview?.item?.title) || t("目前文章") });
     } else if (bucket === "paused") {
       message = t("分析已暫停，佇列還有 {queueCount} 篇。", { queueCount: state.queueCount });
     } else if (bucket === "queued") {
@@ -569,8 +571,8 @@ function renderStatus(state) {
   runStatus.textContent = reviewing ? t("等待確認主題") : running && stageName ? stageName : running ? t("分析中") : paused && state.queueCount ? t("已暫停") : state.queueCount ? t("等待處理") : t("待命");
   statusDot.className = `dot${reviewing ? " review" : running ? " running" : paused && state.queueCount ? " paused" : ""}`;
   currentTitle.textContent = state.current
-    ? t("正在分析：{title}", { title: state.current.title || t("未命名文章") })
-    : reviewing ? t("等待確認：{title}", { title: state.topicReview.item?.title || t("未命名文章") }) : t("目前沒有正在分析的文章");
+    ? t("正在分析：{title}", { title: displayTitle(state.current.title) || t("未命名文章") })
+    : reviewing ? t("等待確認：{title}", { title: displayTitle(state.topicReview.item?.title) || t("未命名文章") }) : t("目前沒有正在分析的文章");
   if (state.stage?.startedAt) {
     const seconds = Math.max(0, Math.floor((Date.now() - new Date(state.stage.startedAt).getTime()) / 1000));
     const model = state.stage.model ? ` · ${state.stage.model}` : "";

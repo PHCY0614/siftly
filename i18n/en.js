@@ -489,6 +489,7 @@
     "待主題整理": "Topics to organise",
     "待主題確認": "Topics to confirm",
     "不分析": "Skipped",
+    "未命名資料庫": "Untitled database",
     "目前沒有待分析文章。可在設定頁使用「準備待分析文章」批次選取，或在 Notion 將文章的整理狀態設為待分析。": "No pending articles. Select some under \"Prepare articles to analyse\" in Settings, or set an article's status to pending in Notion."
   };
   if (typeof module === "object" && module.exports) {

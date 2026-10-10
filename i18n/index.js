@@ -42,6 +42,16 @@
     return fill(language === "en" && english[key] !== undefined ? english[key] : key, params);
   }
 
+  // Titles Siftly fills in when a page or database has none. They are saved as data (in the config
+  // and the queue), so they are translated where they are shown, not where they are made.
+  const PLACEHOLDER_TITLES = Object.freeze(["未命名文章", "未命名資料庫"]);
+
+  // A page or database title for display: a fill-in title in the current language, any other unchanged.
+  function displayTitle(title) {
+    const text = String(title ?? "");
+    return PLACEHOLDER_TITLES.includes(text) ? t(text) : text;
+  }
+
   function normalizeSpace(value) {
     return String(value ?? "").replace(/\s+/g, " ").trim();
   }
@@ -86,5 +96,14 @@
     return setLanguage(saved);
   }
 
-  return Object.freeze({ LANGUAGES, getLanguage, loadFromStorage, setLanguage, t, translateDocument });
+  return Object.freeze({
+    LANGUAGES,
+    PLACEHOLDER_TITLES,
+    displayTitle,
+    getLanguage,
+    loadFromStorage,
+    setLanguage,
+    t,
+    translateDocument
+  });
 });

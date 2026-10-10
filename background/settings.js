@@ -173,6 +173,7 @@ async function saveNotionTarget(config, inspected) {
     ...config,
     dataSourceId: inspected.dataSourceId,
     databaseId: inspected.databaseId || config.databaseId,
+    dataSourceTitle: N.dataSourceSummary(inspected.dataSource)?.title || "",
     columnMap: inspected.prepared ? inspected.plan.map : null,
     preferExistingTopicsByDataSource: preferences,
     verified: { ...config.verified, notion: true }
@@ -439,6 +440,7 @@ function buildNextConfig(settings, current, resolved) {
     topicDictionary: targetChanged ? [] : normalizeTopicDictionary(current.topicDictionary),
     dataSourceId: targetChanged ? "" : current.dataSourceId,
     databaseId: targetChanged ? "" : current.databaseId,
+    dataSourceTitle: targetChanged ? "" : current.dataSourceTitle,
     columnMap: targetChanged ? null : current.columnMap,
     // A new token, key, or database has not been tested yet.
     verified: {
@@ -573,7 +575,8 @@ function setupStatus(config, secrets) {
   return {
     notion: !secrets.hasNotionToken || !config.notionTarget ? "missing" : config.verified?.notion ? "verified" : "saved",
     ai: !hasAiKey ? "missing" : config.verified?.ai === aiFingerprint(config) ? "verified" : "saved",
-    fields: fieldsReady ? "ready" : "missing"
+    fields: fieldsReady ? "ready" : "missing",
+    databaseTitle: config.dataSourceTitle || ""
   };
 }
 

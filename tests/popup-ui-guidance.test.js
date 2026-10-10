@@ -11,7 +11,8 @@ const helperStart = popupSource.indexOf("const PopupPresentation =");
 const helperEnd = popupSource.indexOf("function renderActiveDatabase()", helperStart);
 assert.ok(helperStart >= 0 && helperEnd > helperStart, "popup presentation helper must be loadable");
 
-const context = vm.createContext({ t: require(path.join(root, "i18n/index.js")).t });
+const I = require(path.join(root, "i18n/index.js"));
+const context = vm.createContext({ t: I.t, displayTitle: I.displayTitle });
 vm.runInContext(popupSource.slice(helperStart, helperEnd), context, {
   filename: "popup.js#presentation"
 });
@@ -56,6 +57,23 @@ function testDatabaseIdentityUsesExistingIds() {
     presentation.activeDatabaseLabel({ config: { dataSourceId: id } }),
     "作用中資料庫：ID 12345678"
   );
+  assert.equal(
+    presentation.activeDatabaseLabel({ config: { dataSourceId: id, dataSourceTitle: "閱讀收藏" } }),
+    "作用中資料庫：閱讀收藏",
+    "讀過資料庫名稱後顯示名稱，不顯示 ID"
+  );
+  I.setLanguage("en");
+  assert.equal(
+    presentation.activeDatabaseLabel({ config: { dataSourceTitle: "未命名資料庫" } }),
+    "Active database: Untitled database",
+    "沒有標題時補上的名稱跟著介面語言"
+  );
+  assert.equal(
+    presentation.activeDatabaseLabel({ config: { dataSourceTitle: "閱讀收藏" } }),
+    "Active database: 閱讀收藏",
+    "使用者自己取的名稱不翻譯"
+  );
+  I.setLanguage("zh");
   assert.equal(
     presentation.activeDatabaseLabel({ config: { notionTarget: `https://www.notion.so/${id.replaceAll("-", "")}` } }),
     "作用中資料庫：ID 12345678"

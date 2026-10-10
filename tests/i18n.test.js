@@ -33,6 +33,7 @@ function calledKeys() {
   }
   // Reached through a variable rather than a literal.
   for (const name of Object.values(N.STATUS_NAMES)) keys.add(name);
+  for (const title of I.PLACEHOLDER_TITLES) keys.add(title);
   keys.add(JSON.parse(source("background/constants.js").match(/const NO_PENDING_PAGES_MESSAGE = ("(?:[^"\\]|\\.)*")/)[1]));
   return keys;
 }

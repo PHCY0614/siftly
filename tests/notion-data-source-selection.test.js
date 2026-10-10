@@ -532,6 +532,7 @@ async function testConfirmedFieldPreparation() {
   assert.equal(response.data.fieldsReady, false);
   assert.equal(response.data.title, "內容資料庫");
   assert.equal(localData[CONFIG_KEY].verified.notion, true);
+  assert.equal(localData[CONFIG_KEY].dataSourceTitle, "內容資料庫");
   assert.equal(patchCount(), 0, "連接資料庫不得建立欄位");
 
   response = await send({ type: "LIST_UNANALYZED_ARTICLES" });

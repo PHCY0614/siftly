@@ -60,6 +60,8 @@ const DEFAULT_CONFIG = Object.freeze({
   aiProvider: "gemini",
   allowTopicProposals: true,
   dataSourceId: "",
+  // The database's name as last read from Notion, so the pages can name it instead of showing an id.
+  dataSourceTitle: "",
   databaseId: "",
   discardedTopicNames: [],
   excludedPersonTerms: DEFAULT_EXCLUDED_PERSON_TERMS,
