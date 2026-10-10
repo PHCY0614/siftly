@@ -71,28 +71,39 @@
   }
   const ANALYSIS_JSON_SCHEMA = Object.freeze(analysisJsonSchema());
 
-  const CHUNK_JSON_SCHEMA = Object.freeze({
-    type: "object",
-    additionalProperties: false,
-    required: ["details", "terms", "transitions"],
-    properties: {
-      details: {
-        type: "array",
-        maxItems: 24,
-        items: { type: "string", description: "一項忠於原文的具體事件、案例或細節，保持精簡" }
-      },
-      terms: {
-        type: "array",
-        maxItems: 20,
-        items: { type: "string", description: "一個原文中的專有名詞、方法或術語" }
-      },
-      transitions: {
-        type: "array",
-        maxItems: 12,
-        items: { type: "string", description: "一項本段內的話題轉折，保持精簡" }
+  // Field descriptions follow the output language so an English run carries no Chinese instructions.
+  function chunkJsonSchema(outputLanguage = "zh-TW") {
+    const english = prompt.normalizeOutputLanguage(outputLanguage) === "en";
+    return {
+      type: "object",
+      additionalProperties: false,
+      required: ["details", "terms", "transitions"],
+      properties: {
+        details: {
+          type: "array",
+          maxItems: 24,
+          items: { type: "string", description: english
+            ? "One concise, faithful concrete event, case, or detail from the source"
+            : "一項忠於原文的具體事件、案例或細節，保持精簡" }
+        },
+        terms: {
+          type: "array",
+          maxItems: 20,
+          items: { type: "string", description: english
+            ? "One proper name, method, or term from the source"
+            : "一個原文中的專有名詞、方法或術語" }
+        },
+        transitions: {
+          type: "array",
+          maxItems: 12,
+          items: { type: "string", description: english
+            ? "One concise topic shift within this segment"
+            : "一項本段內的話題轉折，保持精簡" }
+        }
       }
-    }
-  });
+    };
+  }
+  const CHUNK_JSON_SCHEMA = Object.freeze(chunkJsonSchema());
 
   const TOPIC_ORGANIZER_BATCH_LIMIT = 75;
   const TOPIC_ORGANIZER_JSON_SCHEMA = Object.freeze({
@@ -229,7 +240,7 @@
     return generationPayload(
       prompt.buildChunkSystemPrompt(options.outputLanguage),
       prompt.buildChunkPrompt(chunkText, index, total, options),
-      CHUNK_JSON_SCHEMA,
+      chunkJsonSchema(options.outputLanguage),
       { maxOutputTokens: MAX_OUTPUT_TOKENS, model }
     );
   }
@@ -242,7 +253,7 @@
     return generationPayload(
       prompt.buildChunkSystemPrompt(options.outputLanguage),
       prompt.buildChunkRepairPrompt(invalidOutput, errors, options),
-      CHUNK_JSON_SCHEMA,
+      chunkJsonSchema(options.outputLanguage),
       { maxOutputTokens: 4096, model }
     );
   }
@@ -1080,9 +1091,16 @@
     return { errors, ok: errors.length === 0, value: errors.length ? null : normalized };
   }
 
-  function formatChunkNotes(notes) {
+  function formatChunkNotes(notes, outputLanguage = "zh-TW") {
+    const english = prompt.normalizeOutputLanguage(outputLanguage) === "en";
+    const none = english ? "None" : "無";
     return notes.map((note, index) => {
-      const sections = [
+      const sections = english ? [
+        `Segment ${index + 1}`,
+        `Details:\n${note.details.map(item => `- ${item}`).join("\n") || `- ${none}`}`,
+        `Terms: ${note.terms.join(", ") || none}`,
+        `Topic shifts:\n${note.transitions.map(item => `- ${item}`).join("\n") || `- ${none}`}`
+      ] : [
         `第 ${index + 1} 段`,
         `具體內容：\n${note.details.map(item => `- ${item}`).join("\n") || "- 無"}`,
         `詞彙：${note.terms.join("、") || "無"}`,
@@ -1153,6 +1171,7 @@
     ANALYSIS_JSON_SCHEMA,
     analysisJsonSchema,
     CHUNK_JSON_SCHEMA,
+    chunkJsonSchema,
     TOPIC_ORGANIZER_BATCH_LIMIT,
     TOPIC_ORGANIZER_JSON_SCHEMA,
     TOPIC_STANDARD_MATCHER_JSON_SCHEMA,

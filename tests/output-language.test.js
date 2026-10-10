@@ -538,7 +538,23 @@ async function testRepairPipelineCarriesLanguage() {
   }
 }
 
+function testEnglishChunkPathAndSpellingCarryNoChinese() {
+  const notes = [{ details: ["A launch"], terms: ["Alpha"], transitions: [] }];
+  const english = G.formatChunkNotes(notes, "en");
+  assert.doesNotMatch(english, /[一-鿿]/u, "英文長文筆記不可含中文標籤");
+  assert.match(G.formatChunkNotes(notes), /第 1 段/, "中文筆記格式維持不變");
+  assert.doesNotMatch(JSON.stringify(G.chunkJsonSchema("en")), /[一-鿿]/u, "英文分段 schema 不可含中文");
+  assert.match(JSON.stringify(G.chunkJsonSchema("zh-TW")), /忠於原文/);
+  const prompts = [
+    P.buildSystemPrompt("", P.DEFAULT_ENGLISH_OUTPUT_SPEC, "", "en"),
+    P.buildChunkSystemPrompt("en")
+  ].join("\n");
+  assert.doesNotMatch(prompts, /British English/, "英文不可寫死英式拼寫");
+  assert.match(prompts, /American or British/, "英文應依文章內容決定美式或英式");
+}
+
 async function main() {
+  testEnglishChunkPathAndSpellingCarryNoChinese();
   testLanguageAndSpecNormalisation();
   testPromptLanguageAndChineseRegression();
   testAllBuildersCarryEnglishLanguageRules();

@@ -232,7 +232,7 @@ async function analyzeArticle(articleText, config, signal) {
     ));
   }
   const notesPrompt = P.buildNotesPrompt(
-    G.formatChunkNotes(notes),
+    G.formatChunkNotes(notes, outputLanguage),
     [],
     true,
     excludedPersonTerms,
