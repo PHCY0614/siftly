@@ -5,7 +5,9 @@ const { t, displayTitle } = globalThis.AnalyzerI18n;
 
 // ==== DOM references and local UI state ====
 const form = document.querySelector("#settings-form");
-const statusBox = document.querySelector("#status");
+const pageStatus = document.querySelector("#page-status");
+const analysisSettingsStatus = document.querySelector("#analysis-settings-status");
+const credentialsStatus = document.querySelector("#credentials-status");
 const notionToken = document.querySelector("#notion-token");
 const notionTarget = document.querySelector("#notion-target");
 const notionDataSourceSelect = document.querySelector("#notion-data-source");
@@ -362,13 +364,16 @@ async function send(type, extra = {}) {
   return response.data;
 }
 
-function showStatus(message, kind = "info", localTarget = null) {
-  if (localTarget) {
-    localTarget.textContent = message;
-    localTarget.className = `local-status visible ${kind}`;
-  }
-  statusBox.textContent = message;
-  statusBox.className = `status visible ${kind}`;
+// Each message appears once: beside the control that caused it, or, without a target, in the setup
+// summary at the top (page-wide messages and results of steps whose section collapses when they succeed).
+function showStatus(message, kind = "info", target = pageStatus) {
+  target.textContent = message;
+  target.className = `local-status visible ${kind}`;
+}
+
+function clearStatus(target) {
+  target.textContent = "";
+  target.className = "local-status";
 }
 
 function articleSavedDataSourceId() {
@@ -697,6 +702,8 @@ function updateProviderUi() {
 
 function setBusy(isBusy) {
   settingsBusy = isBusy;
+  // A new action starts: the summary's last result no longer describes what is happening.
+  if (isBusy) clearStatus(pageStatus);
   for (const button of [
     saveButton,
     ...connectNotionButtons,
@@ -791,7 +798,7 @@ function updateDatabaseChangeWarning() {
 
 function showNotionDataSourceStatus(message, kind = "info") {
   notionDataSourceStatus.textContent = message;
-  notionDataSourceStatus.className = `notion-source-status visible ${kind}`;
+  notionDataSourceStatus.className = message ? `notion-source-status visible ${kind}` : "notion-source-status";
 }
 
 function dataSourceOptionLabel(dataSource, duplicateTitles) {
@@ -897,7 +904,7 @@ async function saveSettings(showConfirmation = true, requireNotionTarget = true)
       && summaryInstructions.value.trim() !== savedSummaryInstructions
       ? t(" 摘要指引有未套用草稿，請按「套用」後才會保存。")
       : "";
-    showStatus(`${t("設定已儲存。")}${queueNotice}${summaryDraftNotice}`, "success");
+    showStatus(`${t("設定已儲存。")}${queueNotice}${summaryDraftNotice}`, "success", analysisSettingsStatus);
   }
   return config;
 }
@@ -1087,7 +1094,7 @@ form.addEventListener("submit", async event => {
   try {
     await saveSettings(true);
   } catch (error) {
-    showStatus(error.message, "error");
+    showStatus(error.message, "error", analysisSettingsStatus);
   } finally {
     setBusy(false);
   }
@@ -1129,9 +1136,9 @@ clearButton.addEventListener("click", async () => {
     rememberNotionToken.checked = false;
     rememberGeminiKey.checked = false;
     rememberVertexKey.checked = false;
-    showStatus(t("所有金鑰已清除。"), "success");
+    showStatus(t("所有金鑰已清除。"), "success", credentialsStatus);
   } catch (error) {
-    showStatus(error.message, "error");
+    showStatus(error.message, "error", credentialsStatus);
   } finally {
     setBusy(false);
     await refreshSetup();
@@ -1162,7 +1169,7 @@ for (const [key, limit] of Object.entries(OUTPUT_SPEC_LIMITS)) {
 document.querySelector("#reset-output-spec").addEventListener("click", () => {
   setVisibleOutputSpec(DEFAULT_OUTPUT_SPECS[currentOutputLanguage], currentOutputLanguage);
   updateOutputSpecSummary();
-  showStatus(t("{value}輸出規格已恢復預設值；儲存後生效。", { value: outputLanguageLabel() }), "info");
+  showStatus(t("{value}輸出規格已恢復預設值；儲存後生效。", { value: outputLanguageLabel() }), "info", analysisSettingsStatus);
 });
 // ==== Summary writing preferences ====
 function updateSummaryInstructionsStatus() {
@@ -1201,9 +1208,9 @@ async function persistSummaryInstructions(value, reset = false) {
     });
     savedSummaryInstructions = config.summaryInstructions;
     summaryInstructions.value = savedSummaryInstructions;
-    showStatus(reset ? t("已恢復預設摘要方式。") : t("已套用摘要指引。"), "success");
+    showStatus(reset ? t("已恢復預設摘要方式。") : t("已套用摘要指引。"), "success", analysisSettingsStatus);
   } catch (error) {
-    showStatus(error.message, "error");
+    showStatus(error.message, "error", analysisSettingsStatus);
   } finally {
     summaryInstructionsBusy = false;
     setBusy(false);
@@ -1969,7 +1976,9 @@ async function prepareNotionFieldsFromUi() {
         title: displayTitle(prepared.title) || t("Notion 資料庫"),
         created: created.join(t("、"))
       })
-      : t("欄位已齊全，不需要修改 Notion。"), "success", connectionStatus);
+      : t("欄位已齊全，不需要修改 Notion。"), "success");
+    // The section collapses once its fields are ready, so the result goes to the summary instead.
+    clearStatus(connectionStatus);
   } catch (error) {
     showStatus(error.message, "error", connectionStatus);
   } finally {
@@ -1985,13 +1994,12 @@ async function connectNotionFromUi() {
   try {
     await saveSettings(false);
     const result = await send("TEST_NOTION_CONNECTION");
-    showNotionDataSourceStatus(
-      t("已連接「{title}」。{next}", {
-        title: displayTitle(result.title) || t("Notion 資料庫"),
-        next: result.fieldsReady ? t("Siftly 欄位已就緒。") : t("接著請到「準備 Notion 欄位」建立欄位。")
-      }),
-      "success"
-    );
+    showStatus(t("已連接「{title}」。{next}", {
+      title: displayTitle(result.title) || t("Notion 資料庫"),
+      next: result.fieldsReady ? t("Siftly 欄位已就緒。") : t("接著請到「準備 Notion 欄位」建立欄位。")
+    }), "success");
+    // The section collapses once the connection is verified, so the result goes to the summary instead.
+    showNotionDataSourceStatus("");
   } catch (error) {
     showNotionDataSourceStatus(error.message, "error");
   } finally {
@@ -2008,10 +2016,13 @@ async function testAiConnectionFromUi() {
     await saveSettings(false, false);
     const result = await send("TEST_AI_CONNECTION");
     const providerName = result.provider === "vertex" ? "Vertex AI" : "Google AI Studio";
-    showStatus(result.selectedAvailable
-      ? t("{providerName} 連線成功，目前模型可用。", { providerName })
-      : t("{providerName} 連線成功，但找不到目前的模型，請重新選擇。", { providerName }),
-    result.selectedAvailable ? "success" : "info", modelOperationStatus);
+    if (result.selectedAvailable) {
+      // The section collapses once the service is verified, so the result goes to the summary instead.
+      showStatus(t("{providerName} 連線成功，目前模型可用。", { providerName }), "success");
+      clearStatus(modelOperationStatus);
+    } else {
+      showStatus(t("{providerName} 連線成功，但找不到目前的模型，請重新選擇。", { providerName }), "info", modelOperationStatus);
+    }
   } catch (error) {
     showStatus(error.message, "error", modelOperationStatus);
   } finally {

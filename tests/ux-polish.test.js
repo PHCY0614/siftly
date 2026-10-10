@@ -17,6 +17,13 @@ function testNotionStatusDialogHierarchy() {
   assert.match(html, /id="prepare-fields"[^>]*>建立 Siftly 欄位</);
   assert.match(html, /只會新增資料庫裡還沒有的欄位與狀態選項；既有欄位、既有選項與文章內容都會保留。/);
   assert.doesNotMatch(html, /<dialog/, "建立欄位不再經過確認對話框");
+  // Every message has one place: beside its control, or in the setup summary for page-wide ones.
+  assert.doesNotMatch(html, /bottom-actions|id="status"/, "底部浮動狀態列已移除");
+  assert.doesNotMatch(html, /aria-live="off"/, "各區塊訊息自己負責播報");
+  for (const id of ["page-status", "analysis-settings-status", "credentials-status", "connection-status", "model-operation-status"]) {
+    assert.match(html, new RegExp(`id="${id}" class="local-status" role="status" aria-live="polite"`));
+  }
+  assert.match(source("options.js"), /function showStatus\(message, kind = "info", target = pageStatus\)/);
   assert.doesNotMatch(css, /confirm-dialog/);
 }
 

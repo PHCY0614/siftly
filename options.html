@@ -65,6 +65,7 @@
         <p id="setup-next-text" role="status" aria-live="polite">正在讀取設定…</p>
         <button id="setup-next-action" class="button primary compact" type="button" hidden></button>
       </div>
+      <p id="page-status" class="local-status" role="status" aria-live="polite"></p>
       <details id="article-preparation" class="article-preparation" hidden>
         <summary>準備待分析文章</summary>
         <div class="article-preparation__body">
@@ -235,7 +236,7 @@
         <div class="inline-actions">
           <button id="test-ai" class="button secondary" type="button">儲存並測試 AI 連線</button>
         </div>
-        <p id="model-operation-status" class="local-status" aria-live="off"></p>
+        <p id="model-operation-status" class="local-status" role="status" aria-live="polite"></p>
       </section>
 
       <section class="panel" id="notion-fields" aria-labelledby="fields-heading">
@@ -250,7 +251,7 @@
         <div class="inline-actions">
           <button id="prepare-fields" class="button primary" type="button">建立 Siftly 欄位</button>
         </div>
-        <p id="connection-status" class="local-status" aria-live="off"></p>
+        <p id="connection-status" class="local-status" role="status" aria-live="polite"></p>
         <p id="fields-view-tip" class="hint" role="note">新欄位可能在既有資料庫檢視中被隱藏；請到 Notion 把需要的欄位顯示出來。</p>
         <details id="field-details" class="field-details">
           <summary>Siftly 會用到的六個欄位</summary>
@@ -315,6 +316,7 @@
         <div class="inline-actions">
           <button id="save" class="button primary" type="submit">儲存分析設定</button>
         </div>
+        <p id="analysis-settings-status" class="local-status" role="status" aria-live="polite"></p>
       </section>
 
       <section class="panel" id="topic-organizer-panel" aria-labelledby="organizer-heading">
@@ -342,7 +344,7 @@
             <button id="rollback-topics" class="button danger" type="button" disabled>回復上一次套用</button>
           </div>
         </div>
-        <p id="organizer-operation-status" class="local-status" aria-live="off"></p>
+        <p id="organizer-operation-status" class="local-status" role="status" aria-live="polite"></p>
         <p id="organizer-summary" class="hint" role="status" aria-live="polite">尚未產生建議。</p>
         <div id="apply-progress" class="apply-progress" hidden>
           <div class="apply-progress__track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-labelledby="apply-progress-label">
@@ -409,16 +411,14 @@
           </select>
           <input id="import-dictionary" type="file" accept="application/json,.json" hidden>
         </div>
-        <p id="dictionary-status" class="local-status" aria-live="off"></p>
+        <p id="dictionary-status" class="local-status" role="status" aria-live="polite"></p>
         <p class="hint">字典檔不含 API Key、Token 或文章正文。</p>
       </section>
 
-      <div class="bottom-actions">
-        <div id="status" class="status" role="status" aria-live="polite"></div>
-      </div>
       <div class="secondary-actions">
         <button id="clear-credentials" class="button danger" type="button">清除所有金鑰</button>
       </div>
+      <p id="credentials-status" class="local-status" role="status" aria-live="polite"></p>
     </form>
   </main>
   <script src="i18n/en.js"></script>

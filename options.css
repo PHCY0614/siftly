@@ -491,20 +491,6 @@ input:focus, select:focus, textarea:focus { border-color: var(--green); box-shad
   font-size: 14px;
 }
 
-.bottom-actions {
-  position: sticky;
-  bottom: 12px;
-  z-index: 10;
-  margin-top: 12px;
-  padding: 12px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--paper);
-  box-shadow: 0 10px 24px rgba(22, 44, 31, .14);
-}
-/* The bar only carries the page-wide status message, so it disappears with it. */
-.bottom-actions:not(:has(.status.visible)) { display: none; }
-.bottom-actions .status { margin: 0; }
 .secondary-actions { display: flex; justify-content: flex-end; margin-top: 10px; }
 .button {
   min-height: 42px;
@@ -722,18 +708,6 @@ input:focus, select:focus, textarea:focus { border-color: var(--green); box-shad
 .local-status.success { background: var(--green-soft); color: var(--green-dark); }
 .local-status.error { background: #fff0ef; color: var(--red); }
 .local-status.info { background: #eef3f7; color: #385168; }
-.status {
-  display: none;
-  margin: 0 0 10px;
-  padding: 13px 15px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  font-size: 14px;
-}
-.status.visible { display: block; }
-.status.success { background: var(--green-soft); color: var(--green-dark); }
-.status.error { background: #fff0ef; color: var(--red); }
-.status.info { background: #eef3f7; color: #385168; }
 .summary-instructions-status.is-pending {
   padding: 9px 11px;
   border: 1px solid #ead69a;
@@ -797,6 +771,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--green); box-shad
   border-top: 1px solid var(--line);
 }
 .setup-summary__next p { margin: 0; font-weight: 700; }
+.setup-summary > .local-status { margin-top: 14px; }
 
 /* ---- Collapsible sections ---- */
 .section-toggle {
@@ -852,7 +827,6 @@ input:focus, select:focus, textarea:focus { border-color: var(--green); box-shad
   .setup-summary__items { grid-template-columns: 1fr; }
   .spec-grid { grid-template-columns: 1fr 1fr; }
   .actions .button { width: 100%; }
-  .bottom-actions { bottom: 8px; padding: 10px; }
   .secondary-actions { justify-content: flex-start; }
   .topic-group-head { grid-template-columns: 18px minmax(0, 1fr); }
   .topic-group-head .confidence { grid-column: 2; justify-self: start; }
