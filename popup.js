@@ -5,10 +5,15 @@ const runStatus = document.querySelector("#run-status");
 const statusDot = document.querySelector("#status-dot");
 const currentTitle = document.querySelector("#current-title");
 const stageDetail = document.querySelector("#stage-detail");
+const activeDatabase = document.querySelector("#active-database");
 const pendingCount = document.querySelector("#pending-count");
 const queueCount = document.querySelector("#queue-count");
 const failedCount = document.querySelector("#failed-count");
 const errorBox = document.querySelector("#error-box");
+const nextStep = document.querySelector("#next-step");
+const nextStepMessage = document.querySelector("#next-step-message");
+const nextStepAction = document.querySelector("#next-step-action");
+const srAnnouncement = document.querySelector("#sr-announcement");
 const recentList = document.querySelector("#recent-list");
 const topicReview = document.querySelector("#topic-review");
 const reviewPageTitle = document.querySelector("#review-page-title");
@@ -102,6 +107,9 @@ let currentPageInfo = null;
 let currentSurface = "other";
 let currentAction = "analyze";
 let queueControlAction = "resume";
+let lastStatusAnnouncementKey = "";
+let lastStatusAnnouncementBucket = "";
+let hasRenderedStatus = false;
 
 /**
  * Maps INSPECT_PAGE status onto the current-page button. 分析失敗 → retry,
@@ -424,6 +432,118 @@ function renderTopicReview(review) {
   buttons.approveTopic.disabled = actionBusy;
 }
 
+const PopupPresentation = Object.freeze({
+  activeDatabaseLabel({ config = {}, currentPageInfo = {} } = {}) {
+    const identity = [
+      config.dataSourceId,
+      config.databaseId,
+      currentPageInfo.sourceDataSourceId,
+      config.notionTarget
+    ].find(value => typeof value === "string" && value.trim());
+    if (!identity) return "";
+    const match = String(identity).match(/[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12}/);
+    const shortId = match ? match[0].replace(/-/g, "").slice(0, 8) : "";
+    return `作用中資料庫：${shortId ? `ID ${shortId}` : identity}`;
+  },
+
+  nextStep({ currentSurface, state = {} } = {}) {
+    const busy = Boolean(
+      state.running
+      || state.current
+      || state.stage
+      || state.topicReview
+      || (state.mode === "batch" && !state.paused && state.queueCount)
+    );
+    if (currentSurface === "other") {
+      return busy
+        ? { hidden: true, message: "", action: false }
+        : { hidden: false, message: "請切換到 Notion 頁面，再開始分析目前文章。", action: false };
+    }
+    if (currentSurface === "database"
+      && !busy
+      && !state.queueCount
+      && state.databaseCheck?.code === "NO_PENDING_PAGES") {
+      return {
+        hidden: false,
+        message: "目前沒有待分析文章。請到設定頁的「準備待分析文章」選取文章加入待分析。",
+        action: true
+      };
+    }
+    return { hidden: true, message: "", action: false };
+  },
+
+  statusAnnouncement({ state = {}, previousBucket = "", initial = false } = {}) {
+    const running = Boolean(state.running || state.current || state.stage);
+    const reviewing = Boolean(state.topicReview);
+    const paused = Boolean(state.paused);
+    const hasError = Boolean(state.lastError && state.lastError !== state.databaseCheck?.message);
+    const bucket = hasError
+      ? "error"
+      : reviewing
+        ? "review"
+        : running
+          ? "running"
+          : paused && state.queueCount
+            ? "paused"
+            : state.queueCount
+              ? "queued"
+              : "idle";
+    const itemId = state.current?.id || state.topicReview?.item?.id || "";
+    const reviewKey = reviewing
+      ? `${state.topicReview?.candidatePosition || 1}:${state.topicReview?.candidate || ""}`
+      : "";
+    const queueKey = ["paused", "queued"].includes(bucket) ? `:${state.queueCount || 0}` : "";
+    const key = `${bucket}:${itemId}:${reviewKey}:${state.lastError || ""}${queueKey}`;
+    let message = "";
+    if (bucket === "idle" && !initial && ["running", "review"].includes(previousBucket)) {
+      message = "分析已結束，目前待命。";
+    } else if (bucket === "running") {
+      message = `分析開始：${state.current?.title || "目前文章"}。`;
+    } else if (bucket === "review") {
+      message = `等待確認主題：${state.topicReview?.item?.title || "目前文章"}。`;
+    } else if (bucket === "paused") {
+      message = `分析已暫停，佇列還有 ${state.queueCount} 篇。`;
+    } else if (bucket === "queued") {
+      message = `目前有 ${state.queueCount} 篇等待處理。`;
+    }
+    // Errors are announced by #error-box[role=alert], avoiding duplicate speech.
+    if (bucket === "error") message = "";
+    return { bucket, key, message };
+  }
+});
+
+function renderActiveDatabase() {
+  if (!activeDatabase) return;
+  const label = PopupPresentation.activeDatabaseLabel({
+    config: lastConfig || {},
+    currentPageInfo: currentPageInfo || {}
+  });
+  activeDatabase.textContent = label;
+  activeDatabase.hidden = !label;
+}
+
+function renderNextStep(state) {
+  if (!nextStep || !nextStepMessage || !nextStepAction) return;
+  const presentation = PopupPresentation.nextStep({ currentSurface, state });
+  nextStep.hidden = presentation.hidden;
+  nextStepMessage.textContent = presentation.message;
+  nextStepAction.hidden = !presentation.action;
+}
+
+function announceStatusTransition(state) {
+  const presentation = PopupPresentation.statusAnnouncement({
+    state,
+    previousBucket: lastStatusAnnouncementBucket,
+    initial: !hasRenderedStatus
+  });
+  const changed = presentation.key !== lastStatusAnnouncementKey;
+  lastStatusAnnouncementKey = presentation.key;
+  lastStatusAnnouncementBucket = presentation.bucket;
+  hasRenderedStatus = true;
+  if (!changed || !srAnnouncement || !presentation.message) return;
+  srAnnouncement.textContent = presentation.message;
+}
+
 // ==== Status and toolbar ====
 /**
  * Applies GET_STATUS to the popup. Reviewing, running/current/stage, paused
@@ -446,6 +566,7 @@ function renderStatus(state) {
   const singlePage = currentSurface === "single";
   const databasePage = currentSurface === "database";
   const stageName = state.stage?.name || "";
+  announceStatusTransition(state);
   runStatus.textContent = reviewing ? "等待確認主題" : running && stageName ? stageName : running ? "分析中" : paused && state.queueCount ? "已暫停" : state.queueCount ? "等待處理" : "待命";
   statusDot.className = `dot${reviewing ? " review" : running ? " running" : paused && state.queueCount ? " paused" : ""}`;
   currentTitle.textContent = state.current
@@ -468,8 +589,10 @@ function renderStatus(state) {
   const databaseMessageActive = Boolean(databaseMessage && state.lastError === databaseMessage);
   const visibleError = databaseMessageActive && !databasePage ? "" : state.lastError || "";
   errorBox.hidden = !visibleError;
-  errorBox.textContent = visibleError;
+  if (errorBox.textContent !== visibleError) errorBox.textContent = visibleError;
   errorBox.classList.toggle("notice", databaseMessageActive);
+  renderActiveDatabase(state);
+  renderNextStep(state);
   renderTopicReview(state.topicReview);
   renderRecent(state.recent);
 
@@ -635,6 +758,7 @@ customTopic.addEventListener("input", () => {
 });
 document.querySelector("#settings").addEventListener("click", () => send("OPEN_OPTIONS"));
 document.querySelector("#setup-link").addEventListener("click", () => send("OPEN_OPTIONS"));
+nextStepAction?.addEventListener("click", () => send("OPEN_OPTIONS"));
 document.querySelector("#clear-recent").addEventListener("click", () => runAction("CLEAR_RECENT"));
 organizeTopicsButton.addEventListener("click", () => send("OPEN_OPTIONS"));
 

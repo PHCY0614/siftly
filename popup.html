@@ -28,6 +28,7 @@
       </div>
       <p id="current-title" class="current">目前沒有正在分析的文章</p>
       <p id="stage-detail" class="current" hidden></p>
+      <p id="active-database" class="active-database" hidden></p>
       <div class="metrics">
         <div><b id="pending-count">—</b><span>Notion 待分析</span></div>
         <div><b id="queue-count">0</b><span>本機佇列</span></div>
@@ -35,7 +36,15 @@
       </div>
     </section>
 
-    <div id="error-box" class="error-box" hidden></div>
+    <div id="error-box" class="error-box" role="alert" aria-atomic="true" hidden></div>
+
+    <section id="next-step" class="next-step" aria-labelledby="next-step-heading" hidden>
+      <h2 id="next-step-heading">下一步</h2>
+      <p id="next-step-message"></p>
+      <button id="next-step-action" class="button secondary" type="button" hidden>前往設定準備文章</button>
+    </section>
+
+    <p id="sr-announcement" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></p>
 
     <section id="topic-review" class="topic-review" aria-labelledby="topic-review-heading" hidden>
       <div class="review-heading">

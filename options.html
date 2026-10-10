@@ -7,6 +7,28 @@
   <link rel="stylesheet" href="options.css">
 </head>
 <body>
+  <nav id="section-navigation" class="section-navigation" aria-label="設定頁區塊">
+    <a href="#notion-settings" data-section-target="notion-settings" aria-label="連接 Notion">
+      <span class="section-navigation__mark" aria-hidden="true"></span>
+      <span class="section-navigation__label" aria-hidden="true">連接 Notion</span>
+    </a>
+    <a href="#ai-settings" data-section-target="ai-settings" aria-label="連接 AI 服務">
+      <span class="section-navigation__mark" aria-hidden="true"></span>
+      <span class="section-navigation__label" aria-hidden="true">連接 AI 服務</span>
+    </a>
+    <a href="#notion-fields" data-section-target="notion-fields" aria-label="準備 Notion 欄位">
+      <span class="section-navigation__mark" aria-hidden="true"></span>
+      <span class="section-navigation__label" aria-hidden="true">準備 Notion 欄位</span>
+    </a>
+    <a href="#advanced-settings" data-section-target="advanced-settings" aria-label="進階分析設定">
+      <span class="section-navigation__mark" aria-hidden="true"></span>
+      <span class="section-navigation__label" aria-hidden="true">進階分析設定</span>
+    </a>
+    <a href="#topic-organizer-panel" data-section-target="topic-organizer-panel" aria-label="整理主題">
+      <span class="section-navigation__mark" aria-hidden="true"></span>
+      <span class="section-navigation__label" aria-hidden="true">整理主題</span>
+    </a>
+  </nav>
   <main class="shell">
     <header class="hero">
       <div class="hero-title-row">
@@ -25,7 +47,7 @@
     </aside>
 
     <form id="settings-form" novalidate>
-      <section class="panel" aria-labelledby="notion-heading">
+      <section class="panel" id="notion-settings" aria-labelledby="notion-heading">
         <div class="section-heading">
           <span class="step">1</span>
           <div>
@@ -106,7 +128,7 @@
         </details>
       </section>
 
-      <section class="panel" aria-labelledby="gemini-heading">
+      <section class="panel" id="ai-settings" aria-labelledby="gemini-heading">
         <div class="section-heading">
           <span class="step">2</span>
           <div>
@@ -172,7 +194,8 @@
           </div>
           <button id="load-models" class="button secondary compact" type="button">掃描所有可用模型</button>
         </div>
-        <p id="model-summary" class="hint">可掃描目前金鑰看得到的模型；Vertex AI 使用建議模型。</p>
+        <p id="model-summary" class="hint">掃描前會先保存目前設定，再讀取目前金鑰看得到的模型；Vertex AI 使用建議模型。</p>
+        <p id="model-operation-status" class="local-status" aria-live="off"></p>
 
         <aside class="notice" role="note">
           <strong>金鑰與帳務提醒</strong>
@@ -180,7 +203,7 @@
         </aside>
       </section>
 
-      <section class="panel" aria-labelledby="fields-heading">
+      <section class="panel" id="notion-fields" aria-labelledby="fields-heading">
         <div class="section-heading">
           <span class="step">3</span>
           <div>
@@ -188,7 +211,8 @@
             <p>這個工具會用到的欄位，不會影響你的內容與現有欄位。</p>
           </div>
         </div>
-        <p class="hint">按「測試連線並準備欄位」會補齊缺少的欄位；完成後可在上方「準備待分析文章」選取文章加入分析，不必逐篇回到 Notion 設定狀態。分析後工具會先寫暫定主題，正式主題須你確認整理後才寫入。</p>
+        <p class="hint">按「儲存並測試連線、準備欄位」會補齊缺少的欄位；完成後可在上方「準備待分析文章」選取文章加入分析，不必逐篇回到 Notion 設定狀態。分析後工具會先寫暫定主題，正式主題須你確認整理後才寫入。</p>
+        <p id="connection-status" class="local-status" aria-live="off"></p>
         <p id="fields-view-tip" class="hint" role="note">新欄位可能在既有資料庫檢視中被隱藏；請到 Notion 把需要的欄位顯示出來。</p>
         <div class="field-grid" aria-label="工具會用到的欄位">
           <span><b>AI 標題</b></span>
@@ -212,6 +236,8 @@
             <p>調整標題、主題、關鍵字、摘要的長度與數量，以及單次 AI 等待時間。</p>
           </div>
         </div>
+        <details class="advanced-settings-details">
+          <summary>調整輸出規格與摘要指引</summary>
         <label for="output-language">輸出語言</label>
         <select id="output-language" aria-describedby="output-language-help">
           <option value="zh-TW" selected>正體中文</option>
@@ -236,8 +262,8 @@
           <button id="apply-summary-instructions" class="button primary compact" type="button" disabled>套用</button>
           <button id="reset-summary-instructions" class="button secondary compact" type="button" disabled>恢復預設</button>
         </div>
-        <p id="summary-instructions-status" class="hint" role="status" aria-live="polite">正在載入摘要指引…</p>
-        <p class="hint">套用與恢復預設只會保存摘要指引。摘要長度依上方字數設定，既有摘要會保留。</p>
+        <p id="summary-instructions-status" class="hint summary-instructions-status" role="status" aria-live="polite">正在載入摘要指引…</p>
+        <p class="hint">套用與恢復預設只會保存摘要指引；全頁儲存不會保存尚未套用的草稿。摘要長度依上方字數設定，既有摘要會保留。</p>
         <label for="request-timeout">單次 AI 等待上限</label>
         <select id="request-timeout">
           <option value="3">3 分鐘</option>
@@ -245,6 +271,7 @@
           <option value="10">10 分鐘</option>
           <option value="0">不限制</option>
         </select>
+        </details>
       </section>
 
       <section class="panel" id="topic-organizer-panel" aria-labelledby="organizer-heading">
@@ -260,14 +287,20 @@
           <span>優先沿用既有主題</span>
         </label>
         <p class="hint">適合已有穩定分類的資料庫。開啟後，只要能由既有主題合理涵蓋，就會優先建議沿用；不適合時仍可建立新主題。</p>
-        <div class="inline-actions">
-          <button id="prepare-topics" class="button secondary" type="button">掃描並產生整理建議</button>
-          <button id="select-high" class="button secondary" type="button">勾選高信心建議</button>
-          <button id="apply-topics" class="button primary" type="button">確認套用已勾選項目</button>
-          <button id="clear-topic-suggestions" class="button secondary" type="button">清除目前建議</button>
-          <button id="rollback-topics" class="button danger" type="button" disabled>回復上一次套用</button>
+        <p class="organizer-flow" id="topic-organizer-flow">產生建議 <span aria-hidden="true">→</span> 檢查與調整 <span aria-hidden="true">→</span> 套用或回復</p>
+        <div class="organizer-actions" id="topic-organizer-actions">
+          <div class="organizer-primary-actions">
+            <button id="prepare-topics" class="button secondary" type="button">掃描並產生整理建議</button>
+            <button id="select-high" class="button secondary" type="button">勾選高信心建議</button>
+            <button id="apply-topics" class="button primary" type="button">確認套用已勾選項目</button>
+          </div>
+          <div class="organizer-maintenance-actions">
+            <button id="clear-topic-suggestions" class="button secondary" type="button">清除目前建議</button>
+            <button id="rollback-topics" class="button danger" type="button" disabled>回復上一次套用</button>
+          </div>
         </div>
-        <p id="organizer-summary" class="hint">尚未產生建議。</p>
+        <p id="organizer-operation-status" class="local-status" aria-live="off"></p>
+        <p id="organizer-summary" class="hint" role="status" aria-live="polite">尚未產生建議。</p>
         <div id="apply-progress" class="apply-progress" hidden>
           <div class="apply-progress__track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-labelledby="apply-progress-label">
             <div id="apply-progress-fill" class="apply-progress__fill"></div>
@@ -305,7 +338,7 @@
           </div>
         </details>
         <hr>
-        <div class="inline-actions dictionary-actions">
+        <div class="inline-actions dictionary-actions" id="topic-dictionary-actions">
           <button id="export-dictionary" class="button secondary compact" type="button">匯出主題字典</button>
           <div class="split-btn" id="import-split-btn">
             <div class="split-btn__shell">
@@ -333,13 +366,18 @@
           </select>
           <input id="import-dictionary" type="file" accept="application/json,.json" hidden>
         </div>
+        <p id="dictionary-status" class="local-status" aria-live="off"></p>
         <p class="hint">字典檔只含標準主題、定義、別名、顏色與啟用狀態，不含 API Key、Token 或文章正文。</p>
       </section>
 
-      <div id="status" class="status" role="status" aria-live="polite"></div>
-      <div class="actions">
-        <button id="save" class="button primary" type="submit">儲存設定</button>
-        <button id="test" class="button secondary" type="button">測試連線並準備欄位</button>
+      <div class="bottom-actions">
+        <div id="status" class="status" role="status" aria-live="polite"></div>
+        <div class="actions">
+          <button id="save" class="button primary" type="submit">儲存設定</button>
+          <button id="test" class="button secondary" type="button">儲存並測試連線、準備欄位</button>
+        </div>
+      </div>
+      <div class="secondary-actions">
         <button id="clear-credentials" class="button danger" type="button">清除所有金鑰</button>
       </div>
     </form>

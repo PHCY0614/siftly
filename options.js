@@ -50,6 +50,10 @@ const resetSummaryInstructionsButton = document.querySelector("#reset-summary-in
 const requestTimeout = document.querySelector("#request-timeout");
 const preferExistingTopics = document.querySelector("#prefer-existing-topics");
 const organizerSummary = document.querySelector("#organizer-summary");
+const organizerOperationStatus = document.querySelector("#organizer-operation-status");
+const connectionStatus = document.querySelector("#connection-status");
+const modelOperationStatus = document.querySelector("#model-operation-status");
+const dictionaryStatus = document.querySelector("#dictionary-status");
 const applyProgress = document.querySelector("#apply-progress");
 const applyProgressFill = document.querySelector("#apply-progress-fill");
 const applyProgressLabel = document.querySelector("#apply-progress-label");
@@ -108,7 +112,7 @@ let articleActionBusy = false;
 let articleDataSourceId = "";
 let articlePreparationGeneration = 0;
 const MAX_ARTICLE_CANDIDATES = 2000;
-const NO_PENDING_MESSAGE = "目前沒有待分析文章。可以在下方「準備待分析文章」選取文章加入待分析。";
+const NO_PENDING_MESSAGE = "目前沒有待分析文章。請在上方「準備待分析文章」選取文章加入待分析。";
 const DEFAULT_MODEL = "gemini-3.5-flash-lite";
 
 // ==== Shared custom select ====
@@ -348,7 +352,11 @@ async function send(type, extra = {}) {
   return response.data;
 }
 
-function showStatus(message, kind = "info") {
+function showStatus(message, kind = "info", localTarget = null) {
+  if (localTarget) {
+    localTarget.textContent = message;
+    localTarget.className = `local-status visible ${kind}`;
+  }
   statusBox.textContent = message;
   statusBox.className = `status visible ${kind}`;
 }
@@ -374,7 +382,7 @@ async function testConnectionsWithStatusPreparation() {
     if (!["NOTION_STATUS_FIELD_MISSING", "NOTION_PENDING_OPTION_MISSING"].includes(error.code)) throw error;
     const approved = await confirmNotionStatusPreparation(error.code);
     if (!approved) throw error;
-    showStatus("正在準備「整理狀態」，完成後會繼續測試連線…", "info");
+    showStatus("正在準備「整理狀態」，完成後會繼續測試連線…", "info", connectionStatus);
     const statusPreparation = await send("PREPARE_NOTION_STATUS_FIELD");
     return { result: await send("TEST_CONNECTIONS"), statusPreparation };
   }
@@ -715,8 +723,8 @@ function updateProviderUi() {
   vertexModel.hidden = provider !== "vertex";
   loadModelsButton.textContent = provider === "vertex" ? "載入建議模型" : "掃描可用模型";
   modelSummary.textContent = provider === "vertex"
-      ? "載入 Vertex AI 建議模型；按「測試連線並準備欄位」會使用免費的 Token 計數要求驗證所選模型與金鑰。"
-      : "掃描會讀取這把 Google AI Studio Key 可見、支援純文字 generateContent 的模型。";
+      ? "掃描前會先保存目前設定，再載入 Vertex AI 建議模型；按「儲存並測試連線、準備欄位」會使用免費的 Token 計數要求驗證所選模型與金鑰。"
+      : "掃描前會先保存目前設定，再讀取這把 Google AI Studio Key 可見、支援純文字 generateContent 的模型。";
   syncEnhancedSelects();
 }
 
@@ -913,7 +921,11 @@ async function saveSettings(showConfirmation = true) {
     const queueNotice = config.databaseChanged
       ? ` 已切換資料庫${config.clearedQueueCount ? `，並清除 ${config.clearedQueueCount} 篇舊佇列` : ""}，並清除主題整理建議；開始前請掃描資料庫。`
       : "";
-    showStatus(`設定已儲存。金鑰欄已清空顯示，但目前設定仍保留。${queueNotice}`, "success");
+    const summaryDraftNotice = summaryInstructionsLoaded
+      && summaryInstructions.value.trim() !== savedSummaryInstructions
+      ? " 摘要指引有未套用草稿，請按「套用」後才會保存。"
+      : "";
+    showStatus(`設定已儲存。金鑰欄已清空顯示，但目前設定仍保留。${queueNotice}${summaryDraftNotice}`, "success");
   }
   return config;
 }
@@ -1114,7 +1126,7 @@ form.addEventListener("submit", async event => {
 
 testButton.addEventListener("click", async () => {
   setBusy(true);
-  showStatus("正在儲存、連接 Notion、準備欄位並驗證 AI 服務…", "info");
+  showStatus("正在儲存、連接 Notion、準備欄位並驗證 AI 服務…", "info", connectionStatus);
   try {
     await saveSettings(false);
     const { result, statusPreparation } = await testConnectionsWithStatusPreparation();
@@ -1138,9 +1150,9 @@ testButton.addEventListener("click", async () => {
     const fieldTip = (statusPreparation?.created || statusPreparation?.changed || result.addedProperties.length || result.updatedProperties.length)
       ? " 若看不到新建欄位，請到 Notion 既有資料庫檢視中把它們顯示出來。"
       : "";
-    showStatus(`連線成功。${changes}；目前有 ${result.topicCount} 個可用 AI 主題${ignoredNote}；${providerName} ${modelNote}。${pendingNote}${fieldTip}`, result.selectedAvailable && result.hasPending ? "success" : "info");
+    showStatus(`連線成功。${changes}；目前有 ${result.topicCount} 個可用 AI 主題${ignoredNote}；${providerName} ${modelNote}。${pendingNote}${fieldTip}`, result.selectedAvailable && result.hasPending ? "success" : "info", connectionStatus);
   } catch (error) {
-    showStatus(error.message, "error");
+    showStatus(error.message, "error", connectionStatus);
   } finally {
     setBusy(false);
   }
@@ -1153,17 +1165,17 @@ testButton.addEventListener("click", async () => {
  */
 loadModelsButton.addEventListener("click", async () => {
   setBusy(true);
-  showStatus("正在讀取目前服務商的可用模型…", "info");
+  showStatus("正在讀取目前服務商的可用模型…", "info", modelOperationStatus);
   try {
     await saveSettings(false);
     const result = await send("LIST_MODELS");
     const select = activeModelElement();
     const previous = select.value.trim();
     renderModels(select, result.models, previous, result.recommended);
-    modelSummary.textContent = `完成，共有 ${result.models.length} 個可選模型。目前選擇：${select.value}。`;
-    showStatus(`已完整掃描 ${result.models.length} 個可用文字模型。選好後請按「儲存設定」。`, "success");
+    modelSummary.textContent = `掃描前已保存目前設定。完成，共有 ${result.models.length} 個可選模型。目前選擇：${select.value}。`;
+    showStatus(`已完整掃描 ${result.models.length} 個可用文字模型。選好後請按「儲存設定」。`, "success", modelOperationStatus);
   } catch (error) {
-    showStatus(error.message, "error");
+    showStatus(error.message, "error", modelOperationStatus);
   } finally {
     setBusy(false);
   }
@@ -1224,12 +1236,19 @@ function updateSummaryInstructionsStatus() {
   summaryInstructions.disabled = busy;
   applySummaryInstructionsButton.disabled = busy || draft === savedSummaryInstructions;
   resetSummaryInstructionsButton.disabled = busy || (!draft && !savedSummaryInstructions);
-  if (!summaryInstructionsLoaded) return;
+  summaryInstructionsStatus.classList.remove("is-pending", "is-busy", "is-ready");
+  if (!summaryInstructionsLoaded) {
+    summaryInstructionsStatus.classList.add("is-busy");
+    return;
+  }
   if (summaryInstructionsBusy) {
+    summaryInstructionsStatus.classList.add("is-busy");
     summaryInstructionsStatus.textContent = "正在保存摘要指引…";
   } else if (draft !== savedSummaryInstructions) {
+    summaryInstructionsStatus.classList.add("is-pending");
     summaryInstructionsStatus.textContent = "摘要指引尚未套用。";
   } else {
+    summaryInstructionsStatus.classList.add("is-ready");
     summaryInstructionsStatus.textContent = savedSummaryInstructions
       ? "已套用自訂摘要指引；後續分析時使用。"
       : "目前使用預設摘要方式。";
@@ -1569,6 +1588,7 @@ function renderOrganizerGroupCard(group) {
   const selected = document.createElement("input");
   selected.type = "checkbox";
   selected.checked = Boolean(group.selected);
+  selected.setAttribute("aria-label", `選取建議主題：${group.standardTopic || "未命名主題"}`);
   selected.addEventListener("change", () => {
     group.selected = selected.checked;
     if (selected.checked && !(group.selectedAliases ?? []).length) {
@@ -1631,8 +1651,8 @@ function renderOrganizerGroupCard(group) {
     try {
       organizerData = await send("SKIP_TOPIC_GROUP", { groupId: group.id, groups: organizerData.groups });
       renderOrganizer();
-      showStatus("這次先不處理；下次重新掃描時仍可能以其他方向出現。", "info");
-    } catch (error) { showStatus(error.message, "error"); }
+      showStatus("這次先不處理；下次重新掃描時仍可能以其他方向出現。", "info", organizerOperationStatus);
+    } catch (error) { showStatus(error.message, "error", organizerOperationStatus); }
   });
   card.append(head, reason, source, aliasList, separate, impact, skip);
   return card;
@@ -1675,7 +1695,7 @@ function renderOrganizer() {
  */
 async function resolveManualTopic(action) {
   const candidate = manualCandidateName;
-  if (!candidate) return showStatus("目前沒有等待人工確認的暫定主題。", "error");
+  if (!candidate) return showStatus("目前沒有等待人工確認的暫定主題。", "error", organizerOperationStatus);
   if (action === "discard" && !confirm(`確定永久捨棄「${candidate}」嗎？它會從本批受影響頁面的 AI 暫定主題中移除，且不會新增正式主題。`)) return;
   try {
     organizerData = await send("RESOLVE_ORGANIZER_UNCLASSIFIED", {
@@ -1688,9 +1708,9 @@ async function resolveManualTopic(action) {
     renderOrganizer();
     showStatus(action === "skip"
       ? `已暫時跳過「${candidate}」，Notion 內容保持不變。`
-      : `已處理「${candidate}」，並更新受影響頁面的剩餘暫定主題。`, action === "skip" ? "info" : "success");
+      : `已處理「${candidate}」，並更新受影響頁面的剩餘暫定主題。`, action === "skip" ? "info" : "success", organizerOperationStatus);
   } catch (error) {
-    showStatus(error.message, "error");
+    showStatus(error.message, "error", organizerOperationStatus);
   }
 }
 
@@ -1702,13 +1722,13 @@ document.querySelector("#manual-skip-topic").addEventListener("click", () => res
 
 document.querySelector("#prepare-topics").addEventListener("click", async () => {
   setBusy(true);
-  showStatus("正在收集最多 75 個去重後的 AI 暫定主題；不會讀取文章或其他 AI 欄位…", "info");
+  showStatus("正在收集最多 75 個去重後的 AI 暫定主題；不會讀取文章或其他 AI 欄位…", "info", organizerOperationStatus);
   try {
     await saveSettings(false);
     organizerData = await send("PREPARE_TOPIC_ORGANIZER");
     renderOrganizer();
-    showStatus("整理建議已產生。無法安全分組的項目可在本輪未分類區逐項人工確認。", "success");
-  } catch (error) { showStatus(error.message, "error"); }
+    showStatus("整理建議已產生。無法安全分組的項目可在本輪未分類區逐項人工確認。", "success", organizerOperationStatus);
+  } catch (error) { showStatus(error.message, "error", organizerOperationStatus); }
   finally { setBusy(false); }
 });
 document.querySelector("#select-high").addEventListener("click", () => {
@@ -1717,12 +1737,13 @@ document.querySelector("#select-high").addEventListener("click", () => {
     if (group.selected) group.selectedAliases = [...(group.aliases ?? [])];
   }
   renderOrganizer();
+  showStatus("已勾選高信心建議，請檢查內容後再套用。", "success", organizerOperationStatus);
 });
 document.querySelector("#apply-topics").addEventListener("click", async () => {
   const selectedGroups = (organizerData?.groups ?? []).filter(group => group.selected && (group.selectedAliases ?? []).length);
   const count = selectedGroups.length;
   const candidateCount = selectedGroups.reduce((total, group) => total + group.selectedAliases.length, 0);
-  if (!count) return showStatus("請先勾選至少一組建議，並保留至少一個暫定主題。", "error");
+  if (!count) return showStatus("請先勾選至少一組建議，並保留至少一個暫定主題。", "error", organizerOperationStatus);
   if (!confirm(`確定套用 ${count} 組、共 ${candidateCount} 個暫定主題嗎？工具會批次更新受影響頁面，並保留可回復快照。`)) return;
   const draftGroups = organizerData.groups;
   let pollTimer = 0;
@@ -1734,7 +1755,7 @@ document.querySelector("#apply-topics").addEventListener("click", async () => {
       progress: { done: 0, total: Math.max(1, Number(organizerData.pageCount) || candidateCount) }
     };
     renderOrganizer();
-    showStatus("正在把已勾選主題寫入 Notion…", "info");
+    showStatus("正在把已勾選主題寫入 Notion…", "info", organizerOperationStatus);
     pollTimer = window.setInterval(() => {
       void send("GET_TOPIC_ORGANIZER").then(live => {
         if (!live) return;
@@ -1746,14 +1767,15 @@ document.querySelector("#apply-topics").addEventListener("click", async () => {
     renderOrganizer();
     showStatus(
       organizerData.status === "applied" ? "已套用主題對照並更新本機字典。" : "尚未完成，可重新套用或回復。",
-      organizerData.status === "applied" ? "success" : "info"
+      organizerData.status === "applied" ? "success" : "info",
+      organizerOperationStatus
     );
   } catch (error) {
     try {
       organizerData = await send("GET_TOPIC_ORGANIZER") || organizerData;
       renderOrganizer();
     } catch { /* keep last local organizerData */ }
-    showStatus(error.message, "error");
+    showStatus(error.message, "error", organizerOperationStatus);
   } finally {
     if (pollTimer) window.clearInterval(pollTimer);
     if (applyTopicsButton) applyTopicsButton.disabled = false;
@@ -1764,16 +1786,16 @@ document.querySelector("#clear-topic-suggestions").addEventListener("click", asy
   try {
     organizerData = await send("CLEAR_TOPIC_ORGANIZER");
     renderOrganizer();
-    showStatus("目前的主題整理建議已清除。", "success");
-  } catch (error) { showStatus(error.message, "error"); }
+    showStatus("目前的主題整理建議已清除。", "success", organizerOperationStatus);
+  } catch (error) { showStatus(error.message, "error", organizerOperationStatus); }
 });
 document.querySelector("#rollback-topics").addEventListener("click", async () => {
   if (!confirm("確定回復上一次主題套用嗎？新建的 Notion 選項不會自動刪除，但頁面內容與本機字典會復原。")) return;
   try {
     organizerData = await send("ROLLBACK_TOPIC_APPLY");
     renderOrganizer();
-    showStatus("已回復上一次套用。", "success");
-  } catch (error) { showStatus(error.message, "error"); }
+    showStatus("已回復上一次套用。", "success", organizerOperationStatus);
+  } catch (error) { showStatus(error.message, "error", organizerOperationStatus); }
 });
 // ==== Topic dictionary import and export ====
 document.querySelector("#export-dictionary").addEventListener("click", async () => {
@@ -1785,7 +1807,8 @@ document.querySelector("#export-dictionary").addEventListener("click", async () 
     link.download = `notion-ai-topic-dictionary-${new Date().toISOString().slice(0, 10)}.json`;
     link.click();
     URL.revokeObjectURL(url);
-  } catch (error) { showStatus(error.message, "error"); }
+    showStatus("主題字典已匯出。", "success", dictionaryStatus);
+  } catch (error) { showStatus(error.message, "error", dictionaryStatus); }
 });
 importDictionaryTrigger.addEventListener("click", () => {
   closeImportModeMenu();
@@ -1823,9 +1846,86 @@ importDictionary.addEventListener("change", async event => {
     const mode = importMode.value;
     if (!confirm(`字典包含 ${preview.incoming.length} 個主題：新增 ${preview.newCount}、更新 ${preview.updateCount}、衝突 ${preview.conflictCount}、不變 ${preview.unchangedCount}。確定${mode === "overwrite" ? "取代" : "合併"}嗎？`)) return;
     const result = await send("IMPORT_TOPIC_DICTIONARY", { value, mode });
-    showStatus(`已匯入 ${result.imported} 個主題，目前字典共有 ${result.total} 個。`, "success");
-  } catch (error) { showStatus(error.message, "error"); }
+    showStatus(`已匯入 ${result.imported} 個主題，目前字典共有 ${result.total} 個。`, "success", dictionaryStatus);
+  } catch (error) { showStatus(error.message, "error", dictionaryStatus); }
   finally { event.target.value = ""; }
 });
+
+// ==== Settings section navigation ====
+function initSectionNavigation() {
+  const navigation = document.querySelector("#section-navigation");
+  if (!navigation) return;
+  const sections = [...navigation.querySelectorAll("[data-section-target]")]
+    .map(link => ({ link, target: document.getElementById(link.dataset.sectionTarget) }))
+    .filter(section => section.target);
+  if (!sections.length) return;
+
+  function markCurrent(current) {
+    for (const section of sections) {
+      if (section === current) section.link.setAttribute("aria-current", "location");
+      else section.link.removeAttribute("aria-current");
+    }
+  }
+
+  function updateCurrent() {
+    const readingLine = Math.min(160, window.innerHeight * 0.25);
+    let current = sections[0];
+    for (const section of sections) {
+      if (section.target.getBoundingClientRect().top <= readingLine) current = section;
+    }
+    // The last section may never reach the reading line on a short page.
+    const scroller = document.scrollingElement;
+    if (scroller && scroller.scrollHeight > scroller.clientHeight
+      && scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 2) {
+      current = sections[sections.length - 1];
+    }
+    markCurrent(current);
+  }
+
+  let updateQueued = false;
+  function scheduleUpdate() {
+    if (updateQueued) return;
+    updateQueued = true;
+    window.requestAnimationFrame(() => {
+      updateQueued = false;
+      updateCurrent();
+    });
+  }
+
+  for (const section of sections) {
+    section.link.addEventListener("click", event => {
+      event.preventDefault();
+      closeEnhancedSelects();
+      closeImportModeMenu();
+      // Reveal the destination before measuring or scrolling to it.
+      for (let ancestor = section.target; ancestor; ancestor = ancestor.parentElement) {
+        if (ancestor.tagName === "DETAILS") ancestor.open = true;
+      }
+      if (section.target.id === "advanced-settings") {
+        const details = section.target.querySelector("details");
+        if (details) details.open = true;
+      }
+      const focusTarget = section.target.tagName === "DETAILS"
+        ? section.target.querySelector("summary")
+        : section.target.querySelector("h2") || section.target;
+      if (focusTarget) {
+        if (!focusTarget.matches("summary")) focusTarget.tabIndex = -1;
+        focusTarget.focus({ preventScroll: true });
+      }
+      markCurrent(section);
+      section.target.scrollIntoView({
+        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+        block: "start"
+      });
+    });
+  }
+  window.addEventListener("scroll", scheduleUpdate, { passive: true });
+  window.addEventListener("resize", scheduleUpdate);
+  document.addEventListener("toggle", scheduleUpdate, true);
+  if (typeof ResizeObserver !== "undefined") new ResizeObserver(scheduleUpdate).observe(form);
+  updateCurrent();
+}
+
+initSectionNavigation();
 
 void loadConfig();
