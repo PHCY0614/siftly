@@ -1,0 +1,33 @@
+<!doctype html>
+<!--
+  The Chrome Web Store small promo tile, 440x280: icon, the name Siftly, a headline and the extension's
+  subtitle. index.js opens it as promo.html?lang=zh|en and writes store/promo/small-tile-<zh-TW|en>.png;
+  the store takes one tile per listing language, and Chinese is the default listing.
+-->
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  :root { --ink: #17211b; --muted: #626d66; --paper: #fbfaf6; --green: #176b45; --green-dark: #0e5134; }
+  html, body { margin: 0; width: 440px; height: 280px; overflow: hidden; }
+  body { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
+    background: radial-gradient(circle at 10% 8%, rgba(31, 124, 80, .14), transparent 16rem), var(--paper);
+    font-family: "Segoe UI", "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif; }
+  .brand { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; }
+  img { width: 64px; height: 64px; border-radius: 15px; box-shadow: 0 6px 16px rgba(23, 33, 27, .16); }
+  .name { font-size: 44px; font-weight: 700; color: var(--ink); letter-spacing: -.02em; }
+  h1 { margin: 0 0 10px; font-size: 25px; line-height: 1.2; color: var(--green-dark); letter-spacing: .01em; }
+  p { margin: 0; font-size: 14px; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="brand"><img src="/assets/icons/icon128.png" alt=""><span class="name">Siftly</span></div>
+<script>
+const en = new URLSearchParams(location.search).get("lang") === "en";
+document.documentElement.lang = en ? "en" : "zh-Hant";
+document.body.insertAdjacentHTML("beforeend", en
+  ? "<h1>Contents to summaries.<br>Clutter to categories.</h1><p>AI Content Organiser for Notion</p>"
+  : "<h1>摘要內容，整理主題</h1><p>Notion x AI 內容整理工具</p>");
+</script>
+</body>
+</html>

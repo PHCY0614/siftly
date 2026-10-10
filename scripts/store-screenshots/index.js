@@ -1,5 +1,6 @@
 /**
- * Retakes the Chrome Web Store screenshots: store/screenshots/<zh-TW|en>/01-results … 05-setup, 1280x800 each.
+ * Retakes the Chrome Web Store screenshots (store/screenshots/<zh-TW|en>/01-results … 05-setup, 1280x800 each)
+ * and the small promo tile (store/promo/small-tile-<zh-TW|en>.png, 440x280).
  *
  * Serves the project folder as a website, loads the real popup.html and options.html with a fake chrome API
  * (mock.js) and demo data, lays each one out next to its headline (compose.html) and photographs it with
@@ -20,6 +21,7 @@ const run = promisify(execFile);
 
 const ROOT = path.resolve(__dirname, "../..");
 const OUT = path.join(ROOT, "store", "screenshots");
+const PROMO_OUT = path.join(ROOT, "store", "promo");
 const LANGUAGES = [["zh", "zh-TW"], ["en", "en"]];
 const SCENES = ["results", "popup", "review", "organizer", "setup"];
 const TYPES = {
@@ -37,7 +39,7 @@ const EXTENSION_PAGE = /^\/(?:popup|options)\.html$/;
 
 function serve(request, response) {
   const pathname = decodeURIComponent(new URL(request.url ?? "/", "http://localhost").pathname);
-  const file = pathname === "/mock.js" || pathname === "/compose.html"
+  const file = ["/mock.js", "/compose.html", "/promo.html"].includes(pathname)
     ? path.join(__dirname, pathname)
     : path.join(ROOT, pathname);
   if (!path.resolve(file).startsWith(ROOT)) {
@@ -74,13 +76,13 @@ function findChrome() {
 }
 
 // Not execFileSync: the server above has to keep answering while Chrome runs.
-function shoot(chromePath, url, file, profile) {
+function shoot(chromePath, url, file, profile, size = "1280,800") {
   return run(chromePath, [
     "--headless=new",
     "--disable-gpu",
     "--hide-scrollbars",
     "--force-device-scale-factor=1",
-    "--window-size=1280,800",
+    `--window-size=${size}`,
     // Lets the page finish its own timers (the popup's refresh, the settings page's scroll) before the shot.
     "--virtual-time-budget=6000",
     `--user-data-dir=${profile}`,
@@ -103,6 +105,13 @@ const server = http.createServer(serve).listen(0, "127.0.0.1", async () => {
         await shoot(chromePath, `http://127.0.0.1:${port}/compose.html?lang=${language}&scene=${scene}`, file, profile);
         console.log(path.relative(ROOT, file));
       }
+    }
+    // The store takes one small promo tile (440x280) per listing language; Chinese is the default listing.
+    fs.mkdirSync(PROMO_OUT, { recursive: true });
+    for (const [language, folder] of LANGUAGES) {
+      const tile = path.join(PROMO_OUT, `small-tile-${folder}.png`);
+      await shoot(chromePath, `http://127.0.0.1:${port}/promo.html?lang=${language}`, tile, profile, "440,280");
+      console.log(path.relative(ROOT, tile));
     }
   } catch (error) {
     console.error(error.message);
