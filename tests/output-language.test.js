@@ -110,7 +110,10 @@ function testPromptLanguageAndChineseRegression() {
   const builtInPrompts = [P.DEFAULT_ANALYSIS_PROMPT, P.SYSTEM_PROMPT, P.CHUNK_SYSTEM_PROMPT,
     P.TOPIC_ORGANIZER_SYSTEM_PROMPT, P.TOPIC_STANDARD_MATCHER_SYSTEM_PROMPT];
   const promptHash = crypto.createHash("sha256").update(JSON.stringify(builtInPrompts)).digest("hex").toUpperCase();
-  assert.equal(promptHash, "9015F82AA03F8D4EA7B68A587147A4F55C33D1B9705FA942E6E5146B570F47CD");
+  assert.equal(promptHash, "A356D43BC3E551E5733F8BE4A1F618268AF983B772C559BF5A4C4DFDF4754281");
+
+  assert.match(chinese, /NON-NEGOTIABLE OUTPUT CONTRACT[\s\S]*Taiwan wording[\s\S]*SECURITY/, "固定契約必須要求臺灣用語");
+  assert.match(JSON.stringify(G.analysisJsonSchema()), /臺灣用語/, "中文 schema 說明必須提到臺灣用語");
 
   const english = P.buildSystemPrompt("", P.DEFAULT_ENGLISH_OUTPUT_SPEC, "", "en");
   assert.match(english, /English/i);

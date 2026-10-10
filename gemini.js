@@ -48,24 +48,24 @@
     properties: {
       ai_title: { type: "string", description: english
         ? `A concise English title of at most ${spec.titleMax} words and 300 visible characters`
-        : `${spec.titleMax} 個可見字元以內的精簡繁體中文標題` },
+        : `${spec.titleMax} 個可見字元以內的精簡正體中文（臺灣用語）標題` },
       ai_topics: {
         type: "array",
         minItems: spec.topicMin,
         maxItems: spec.topicMax,
         items: { type: "string", description: english
           ? "A directly supported reusable topic of 1 to 4 English words and no more than 60 visible characters"
-          : "由正文直接支持、可跨文章分類，且能涵蓋核心關鍵字或主要摘要內容的完整主題概念" }
+          : "由正文直接支持、可跨文章分類，且能涵蓋核心關鍵字或主要摘要內容的完整主題概念（正體中文，臺灣用語）" }
       },
       ai_keywords: {
         type: "array",
         minItems: spec.keywordCount,
         maxItems: spec.keywordCount,
-        items: { type: "string", description: english ? "One coherent searchable concept" : "一個不可再拆分或合併的搜尋概念" }
+        items: { type: "string", description: english ? "One coherent searchable concept" : "一個不可再拆分或合併的搜尋概念（正體中文，臺灣用語）" }
       },
       ai_summary: { type: "string", description: english
         ? `A direct English summary of ${spec.summaryMin} to ${spec.summaryMax} words, following the source context and order`
-        : `${spec.summaryMin} 至 ${spec.summaryMax} 字、依原文脈絡順序撰寫且直接進入核心內容的摘要` }
+        : `${spec.summaryMin} 至 ${spec.summaryMax} 字、依原文脈絡順序撰寫且直接進入核心內容的正體中文（臺灣用語）摘要` }
     }
     };
   }
