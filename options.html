@@ -35,12 +35,68 @@
         <h1>Siftly</h1>
         <span class="hero-subtitle">Notion x AI 內容整理工具</span>
       </div>
-      <p class="hero-summary">讀取 Notion 頁面的純文字，寫入固定的 AI 分析欄位；不更動原始標題、頁面正文或其他欄位。</p>
+      <p class="hero-summary">用 AI 幫 Notion 文章產生標題、摘要、關鍵字與主題。只寫入 Siftly 欄位，不更動原始標題、頁面正文或其他欄位。</p>
     </header>
+
+    <section id="setup-summary" class="setup-summary" aria-labelledby="setup-summary-title">
+      <h2 id="setup-summary-title" class="visually-hidden">設定進度</h2>
+      <ol class="setup-summary__items">
+        <li data-setup-item="notion">
+          <span class="setup-summary__mark" aria-hidden="true"></span>
+          <a href="#notion-settings" data-section-link="notion-settings">Notion</a>
+          <span class="setup-summary__state"></span>
+        </li>
+        <li data-setup-item="ai">
+          <span class="setup-summary__mark" aria-hidden="true"></span>
+          <a href="#ai-settings" data-section-link="ai-settings">AI 服務</a>
+          <span class="setup-summary__state"></span>
+        </li>
+        <li data-setup-item="fields">
+          <span class="setup-summary__mark" aria-hidden="true"></span>
+          <a href="#notion-fields" data-section-link="notion-fields">Notion 欄位</a>
+          <span class="setup-summary__state"></span>
+        </li>
+      </ol>
+      <div class="setup-summary__next">
+        <p id="setup-next-text" role="status" aria-live="polite">正在讀取設定…</p>
+        <button id="setup-next-action" class="button primary compact" type="button" hidden></button>
+      </div>
+      <details id="article-preparation" class="article-preparation" hidden>
+        <summary>準備待分析文章</summary>
+        <div class="article-preparation__body">
+          <p class="hint">從目前已保存的 Notion 資料庫選取尚未整理的文章。未選取的文章會保持原樣，不會自動開始分析。</p>
+          <div class="article-preparation__toolbar">
+            <label for="article-page-size">每次載入</label>
+            <select id="article-page-size">
+              <option value="10" selected>10 篇</option>
+              <option value="50">50 篇</option>
+            </select>
+            <button id="load-article-candidates" class="button secondary compact" type="button">載入文章</button>
+            <button id="load-more-article-candidates" class="button secondary compact" type="button" hidden>載入更多</button>
+          </div>
+          <p id="article-preparation-summary" class="hint" role="status" aria-live="polite">開啟後會載入最近 10 篇尚未整理的文章。</p>
+          <p class="hint">預覽只取前 10 個頂層區塊，可能不含巢狀內容。</p>
+          <div id="article-selection-toolbar" class="article-selection-toolbar" hidden>
+            <label class="check-row">
+              <input id="select-all-articles" type="checkbox">
+              <span>全選已載入</span>
+            </label>
+            <button id="clear-article-selection" class="button secondary compact" type="button">取消全選</button>
+            <span id="article-selected-count" class="article-selected-count" role="status" aria-live="polite">已選 0 篇</span>
+          </div>
+          <div id="article-candidate-list" class="article-candidate-list" aria-live="polite"></div>
+          <div class="inline-actions article-preparation__actions">
+            <button id="add-articles-to-analysis" class="button primary compact" type="button" disabled>加入待分析</button>
+            <button id="mark-articles-no-analysis" class="button secondary compact" type="button" disabled>標記不分析</button>
+          </div>
+          <p id="article-preparation-status" class="hint" role="status" aria-live="polite"></p>
+        </div>
+      </details>
+    </section>
 
     <aside class="notice privacy-notice" role="note" aria-label="資料傳送說明">
       <strong>資料傳送說明</strong>
-      <span>分析文章時，會把該頁的純文字直接傳送到你選擇的 Google AI，結果寫回同一個 Notion 資料庫；過程不經過開發者營運的中介伺服器。整理主題時只傳送主題名稱，不傳送完整文章。<a href="https://github.com/PHCY0614/siftly/blob/main/PRIVACY.zh-TW.md" target="_blank" rel="noreferrer">查看完整隱私與資料流說明</a></span>
+      <span>分析時會把文章純文字直接傳給你選擇的 Google AI，結果寫回同一個 Notion 資料庫，不經過開發者的伺服器。<a href="https://github.com/PHCY0614/siftly/blob/main/PRIVACY.zh-TW.md" target="_blank" rel="noreferrer">查看完整隱私與資料流說明</a></span>
     </aside>
 
     <form id="settings-form" novalidate>
@@ -53,14 +109,14 @@
           </div>
         </div>
 
-        <div class="notion-setup-guide">
-          <strong>三步驟完成 Notion 連線</strong>
+        <details id="notion-setup-guide" class="notion-setup-guide">
+          <summary>第一次設定？三步驟完成 Notion 連線</summary>
           <ol>
             <li><a href="https://developers.notion.com/guides/get-started/quick-start" target="_blank" rel="noreferrer">建立 Notion Internal Integration／API Token</a>。</li>
             <li>在 Notion 資料庫的 <code>Add connections</code> 中加入這個 Integration。</li>
             <li>貼上 Token，按「載入可用資料庫」，再選擇要使用的資料庫。</li>
           </ol>
-        </div>
+        </details>
 
         <label for="notion-token">Notion Integration Token</label>
         <input id="notion-token" name="notionToken" type="password" autocomplete="off" spellcheck="false" placeholder="secret_…（留白會保留目前設定）">
@@ -77,51 +133,27 @@
         </div>
         <div id="notion-data-source-status" class="notion-source-status" role="status" aria-live="polite"></div>
         <div id="notion-data-source-picker" hidden>
-          <label for="notion-data-source">作用中的 Notion 資料庫</label>
-          <select id="notion-data-source">
-            <option value="" disabled>請選擇資料庫</option>
-          </select>
-          <p class="hint">選擇後仍需按「儲存設定」，不會自動測試連線或修改 Notion 欄位。</p>
-        </div>
-        <p id="database-change-warning" class="database-change-warning" role="note" hidden>儲存後將切換作用中的資料庫，並清除目前資料庫的本機執行清單、近期結果與主題整理狀態；Notion 中既有內容不會被刪除。</p>
-
-        <details id="article-preparation" class="article-preparation">
-          <summary>準備待分析文章</summary>
-          <div class="article-preparation__body">
-            <p class="hint">從目前已保存的 Notion 資料庫選取尚未整理的文章。未選取的文章會保持原樣，不會自動開始分析。</p>
-            <div class="article-preparation__toolbar">
-              <label for="article-page-size">每次載入</label>
-              <select id="article-page-size">
-                <option value="10" selected>10 篇</option>
-                <option value="50">50 篇</option>
+          <div class="model-row">
+            <div class="grow">
+              <label for="notion-data-source">作用中的 Notion 資料庫</label>
+              <select id="notion-data-source">
+                <option value="" disabled>請選擇資料庫</option>
               </select>
-              <button id="load-article-candidates" class="button secondary compact" type="button">載入文章</button>
-              <button id="load-more-article-candidates" class="button secondary compact" type="button" hidden>載入更多</button>
             </div>
-            <p id="article-preparation-summary" class="hint" role="status" aria-live="polite">開啟後會載入最近 10 篇尚未整理的文章。</p>
-            <p class="hint">預覽只取前 10 個頂層區塊，可能不含巢狀內容。</p>
-            <div id="article-selection-toolbar" class="article-selection-toolbar" hidden>
-              <label class="check-row">
-                <input id="select-all-articles" type="checkbox">
-                <span>全選已載入</span>
-              </label>
-              <button id="clear-article-selection" class="button secondary compact" type="button">取消全選</button>
-              <span id="article-selected-count" class="article-selected-count" role="status" aria-live="polite">已選 0 篇</span>
-            </div>
-            <div id="article-candidate-list" class="article-candidate-list" aria-live="polite"></div>
-            <div class="inline-actions article-preparation__actions">
-              <button id="add-articles-to-analysis" class="button primary compact" type="button" disabled>加入待分析</button>
-              <button id="mark-articles-no-analysis" class="button secondary compact" type="button" disabled>標記不分析</button>
-            </div>
-            <p id="article-preparation-status" class="hint" role="status" aria-live="polite"></p>
+            <button id="connect-notion" class="button primary compact" type="button">連接資料庫</button>
           </div>
-        </details>
+          <p class="hint">選好後按「連接資料庫」確認連線；不會修改 Notion 欄位。</p>
+        </div>
+        <p id="database-change-warning" class="database-change-warning" role="note" hidden>連接後將切換作用中的資料庫，並清除目前資料庫的本機執行清單、近期結果與主題整理狀態；Notion 中既有內容不會被刪除。</p>
 
         <details class="notion-advanced">
           <summary>進階設定：手動輸入資料庫網址或 ID</summary>
           <label for="notion-target">Notion 資料庫網址或 Data Source ID</label>
           <input id="notion-target" name="notionTarget" type="text" autocomplete="off" spellcheck="false" placeholder="貼上資料庫網址，或擷取工具顯示的 Data Source ID" required>
           <p class="hint">若資料庫未出現在清單，可改為手動輸入網址或 ID。若同一個資料庫有多個來源，請填入精確 ID。</p>
+          <div class="inline-actions">
+            <button id="connect-notion-manual" class="button secondary compact" type="button">連接資料庫</button>
+          </div>
         </details>
       </section>
 
@@ -147,9 +179,12 @@
             <input id="remember-gemini-key" name="rememberGeminiKey" type="checkbox">
             <span>記住在這台電腦</span>
           </label>
-          <p class="hint">這裡的 Gemini API 不會使用 Google Cloud 的 300 美元試用額度。</p>
-          <p class="hint"><strong>資料使用提醒：</strong>Google AI Studio／Gemini API 未付費服務提交的內容與回應，可能由 Google 用於改善產品及機器學習技術（包括模型訓練），也可能由人工檢閱。請勿傳送敏感、機密或個人資訊；若專案已啟用 Cloud Billing，可能適用付費服務的資料條款。<a href="https://ai.google.dev/gemini-api/terms" target="_blank" rel="noreferrer">查看官方條款</a></p>
-          <p class="hint"><a href="https://ai.dev/rate-limit" target="_blank" rel="noreferrer">查看 Google AI Studio 用量與速率限制</a></p>
+          <p class="hint"><strong>資料使用提醒：</strong>未付費的 Gemini API 內容可能被 Google 用於改善產品並由人工檢閱，請勿傳送敏感、機密或個人資訊。<a href="https://ai.google.dev/gemini-api/terms" target="_blank" rel="noreferrer">查看官方條款</a></p>
+          <details class="provider-details">
+            <summary>額度與費用說明</summary>
+            <p class="hint">這裡的 Gemini API 不會使用 Google Cloud 的 300 美元試用額度。若專案已啟用 Cloud Billing，可能適用付費服務的資料條款。</p>
+            <p class="hint"><a href="https://ai.dev/rate-limit" target="_blank" rel="noreferrer">查看 Google AI Studio 用量與速率限制</a></p>
+          </details>
         </div>
 
         <div id="vertex-settings" hidden>
@@ -159,8 +194,12 @@
             <input id="remember-vertex-key" name="rememberVertexKey" type="checkbox">
             <span>記住在這台電腦</span>
           </label>
-          <p class="hint">Vertex AI 的合資格用量可由 Google Cloud 300 美元試用額度扣抵；實際適用範圍與剩餘額度以 Cloud Billing 顯示為準。</p>
-          <p class="hint"><a href="https://console.cloud.google.com/apis/api/aiplatform.googleapis.com/quotas" target="_blank" rel="noreferrer">查看 Vertex AI 配額</a> · <a href="https://console.cloud.google.com/billing" target="_blank" rel="noreferrer">查看 Cloud Billing 與試用額度</a></p>
+          <p class="hint">Vertex AI 用量由你的 Google Cloud 專案計費，請留意試用額度期限與帳務上限。</p>
+          <details class="provider-details">
+            <summary>額度與費用說明</summary>
+            <p class="hint">Vertex AI 的合資格用量可由 Google Cloud 300 美元試用額度扣抵；實際適用範圍與剩餘額度以 Cloud Billing 顯示為準。</p>
+            <p class="hint"><a href="https://console.cloud.google.com/apis/api/aiplatform.googleapis.com/quotas" target="_blank" rel="noreferrer">查看 Vertex AI 配額</a> · <a href="https://console.cloud.google.com/billing" target="_blank" rel="noreferrer">查看 Cloud Billing 與試用額度</a></p>
+          </details>
         </div>
 
         <div class="model-row">
@@ -192,12 +231,11 @@
           <button id="load-models" class="button secondary compact" type="button">掃描所有可用模型</button>
         </div>
         <p id="model-summary" class="hint">掃描前會先保存目前設定，再讀取目前金鑰看得到的模型；Vertex AI 使用建議模型。</p>
+        <div class="inline-actions">
+          <button id="test-ai" class="button secondary" type="button">儲存並測試 AI 連線</button>
+        </div>
         <p id="model-operation-status" class="local-status" aria-live="off"></p>
-
-        <aside class="notice" role="note">
-          <strong>金鑰與帳務提醒</strong>
-          <span>所有金鑰都只儲存在目前 Chrome 使用者設定中。Vertex AI 用量由對應 Google Cloud 專案計費；請留意試用額度期限與帳務上限。</span>
-        </aside>
+        <p class="hint">所有金鑰都只儲存在目前 Chrome 使用者設定中。</p>
       </section>
 
       <section class="panel" id="notion-fields" aria-labelledby="fields-heading">
@@ -208,21 +246,24 @@
             <p>這個工具會用到的欄位，不會影響你的內容與現有欄位。</p>
           </div>
         </div>
-        <p class="hint">按「儲存並測試連線、準備欄位」會補齊缺少的欄位；完成後可在上方「準備待分析文章」選取文章加入分析，不必逐篇回到 Notion 設定狀態。分析後工具會先寫暫定主題，正式主題須你確認整理後才寫入。</p>
+        <p id="fields-status" class="fields-status" role="status" aria-live="polite">尚未檢查欄位。</p>
+        <div class="inline-actions">
+          <button id="prepare-fields" class="button primary" type="button">建立 Siftly 欄位</button>
+        </div>
         <p id="connection-status" class="local-status" aria-live="off"></p>
         <p id="fields-view-tip" class="hint" role="note">新欄位可能在既有資料庫檢視中被隱藏；請到 Notion 把需要的欄位顯示出來。</p>
-        <div class="field-grid" aria-label="工具會用到的欄位">
-          <span><b>AI 標題</b></span>
-          <span><b>AI 主題</b></span>
-          <span><b>AI 暫定主題</b></span>
-          <span><b>AI 關鍵字</b></span>
-          <span><b>AI 摘要</b></span>
-          <span><b>整理狀態</b></span>
-        </div>
-
-        <label for="excluded-person-terms">關鍵字排除清單</label>
-        <textarea id="excluded-person-terms" name="excludedPersonTerms" rows="4" spellcheck="false" placeholder="每行或逗號分隔，例如：A、B、C、D"></textarea>
-        <p class="hint">清單中的字詞不會被寫入 AI 關鍵字。可加入任何你希望排除的名稱、代稱、常用詞或其他詞彙。預設留白，可隨時增刪。</p>
+        <details id="field-details" class="field-details">
+          <summary>Siftly 會用到的六個欄位</summary>
+          <div class="field-grid" aria-label="工具會用到的欄位">
+            <span><b>AI 標題</b>文字</span>
+            <span><b>AI 主題</b>多選，你確認後的正式分類</span>
+            <span><b>AI 暫定主題</b>文字，分析產生的分類建議</span>
+            <span><b>AI 關鍵字</b>文字</span>
+            <span><b>AI 摘要</b>文字</span>
+            <span><b>整理狀態</b>單選，記錄每篇文章的進度</span>
+          </div>
+          <p class="hint">只會新增資料庫裡還沒有的欄位與狀態選項；既有欄位、既有選項與文章內容都會保留。英文介面建立的資料庫會使用英文欄位名稱。</p>
+        </details>
       </section>
 
       <section class="panel" id="advanced-settings" aria-labelledby="advanced-heading">
@@ -230,17 +271,17 @@
           <span class="step">4</span>
           <div>
             <h2 id="advanced-heading">進階分析設定</h2>
-            <p>調整標題、主題、關鍵字、摘要的長度與數量，以及單次 AI 等待時間。</p>
+            <p>選擇 AI 輸出語言；需要時再調整長度、摘要指引、排除關鍵字與等待時間。</p>
           </div>
         </div>
-        <details class="advanced-settings-details">
-          <summary>調整輸出規格與摘要指引</summary>
         <label for="output-language">輸出語言</label>
         <select id="output-language" aria-describedby="output-language-help">
           <option value="zh-TW" selected>正體中文</option>
           <option value="en">英文</option>
         </select>
         <p id="output-language-help" class="hint">儲存後，後續分析會使用所選語言；既有內容與已確認的主題名稱會保留原樣。</p>
+        <details class="advanced-settings-details">
+          <summary>調整輸出規格、摘要指引與排除關鍵字</summary>
         <p id="output-spec-summary" class="hint">目前分析規格：標題最多 12 字｜主題 1～3 個｜關鍵字 5 個｜摘要 100～250 字</p>
         <p id="output-spec-range-hint" class="hint">可調範圍：標題上限 6～30 字｜主題最少與最多各 1～5 個｜關鍵字 3～10 個｜摘要最少 50～500 字、最多 100～800 字。</p>
         <div class="spec-grid">
@@ -261,6 +302,9 @@
         </div>
         <p id="summary-instructions-status" class="hint summary-instructions-status" role="status" aria-live="polite">正在載入摘要指引…</p>
         <p class="hint">套用與恢復預設只會保存摘要指引；全頁儲存不會保存尚未套用的草稿。摘要長度依上方字數設定，既有摘要會保留。</p>
+        <label for="excluded-person-terms">關鍵字排除清單</label>
+        <textarea id="excluded-person-terms" name="excludedPersonTerms" rows="4" spellcheck="false" placeholder="每行或逗號分隔，例如：A、B、C、D"></textarea>
+        <p class="hint">清單中的字詞不會被寫入 AI 關鍵字。可加入任何你希望排除的名稱、代稱、常用詞或其他詞彙。預設留白，可隨時增刪。</p>
         <label for="request-timeout">單次 AI 等待上限</label>
         <select id="request-timeout">
           <option value="3">3 分鐘</option>
@@ -269,6 +313,9 @@
           <option value="0">不限制</option>
         </select>
         </details>
+        <div class="inline-actions">
+          <button id="save" class="button primary" type="submit">儲存分析設定</button>
+        </div>
       </section>
 
       <section class="panel" id="topic-organizer-panel" aria-labelledby="organizer-heading">
@@ -369,29 +416,12 @@
 
       <div class="bottom-actions">
         <div id="status" class="status" role="status" aria-live="polite"></div>
-        <div class="actions">
-          <button id="save" class="button primary" type="submit">儲存設定</button>
-          <button id="test" class="button secondary" type="button">儲存並測試連線、準備欄位</button>
-        </div>
       </div>
       <div class="secondary-actions">
         <button id="clear-credentials" class="button danger" type="button">清除所有金鑰</button>
       </div>
     </form>
   </main>
-  <dialog id="notion-fields-dialog" class="confirm-dialog" aria-labelledby="notion-fields-dialog-title" aria-describedby="notion-fields-dialog-message notion-fields-dialog-scope">
-    <form method="dialog" class="confirm-dialog__surface">
-      <div class="confirm-dialog__body">
-        <h2 id="notion-fields-dialog-title">準備 Notion 欄位</h2>
-        <p id="notion-fields-dialog-message" class="confirm-dialog__message"></p>
-        <p id="notion-fields-dialog-scope" class="confirm-dialog__scope">只會新增上列欄位與狀態選項，之後切換介面語言不會改名；既有欄位、既有選項與文章內容都會保留。</p>
-      </div>
-      <div class="confirm-dialog__actions">
-        <button id="notion-fields-cancel" class="button primary" type="submit" value="cancel" autofocus>取消</button>
-        <button class="button secondary" type="submit" value="confirm">建立欄位</button>
-      </div>
-    </form>
-  </dialog>
   <script src="ui-select.js"></script>
   <script src="options.js"></script>
 </body>

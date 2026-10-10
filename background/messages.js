@@ -15,10 +15,10 @@ async function handleMessage(message) {
     case "SAVE_SETTINGS":
       if (message.summaryOnly === true) return saveSummaryInstructions(message.settings?.summaryInstructions);
       return saveSettings(message.settings ?? {});
-    case "TEST_CONNECTIONS":
-      return testConnections();
-    case "PREVIEW_NOTION_FIELDS":
-      return previewNotionFields();
+    case "TEST_NOTION_CONNECTION":
+      return testNotionConnection();
+    case "TEST_AI_CONNECTION":
+      return testAiConnection();
     case "PREPARE_NOTION_FIELDS":
       return prepareNotionFields();
     case "LIST_MODELS": {

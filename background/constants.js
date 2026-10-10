@@ -82,7 +82,9 @@ const DEFAULT_CONFIG = Object.freeze({
   // The Notion column map of the active data source (see notion.js); null until its fields are prepared.
   columnMap: null,
   // Decides the names of columns and status options created in a data source that has none yet.
-  uiLanguage: "zh"
+  uiLanguage: "zh",
+  // What a connection test has proven. `ai` holds the provider and model that passed, so changing either voids it.
+  verified: { notion: false, ai: "" }
 });
 
 const DEFAULT_STATE = Object.freeze({

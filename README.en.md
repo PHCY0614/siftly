@@ -47,7 +47,7 @@ Manually installed versions do not update automatically. After downloading a new
 1. Create a Notion Internal Integration and share the target database with it through `Add connections`.
 2. Open the extension settings, enter the Notion Integration Token, click `載入可用資料庫` (Load available databases) and select the target database.
 3. Choose an AI provider and model, enter its API key, then click `儲存設定` (Save settings).
-4. Click `測試連線並準備欄位` (Test connections and prepare properties). If the database has no Siftly properties or status options yet, the extension lists what it will create and writes them only after you choose `建立欄位` (Create properties); existing properties are never renamed or overwritten.
+4. Follow the setup progress at the top of the page: after choosing a database click `連接資料庫` (Connect database); after entering a key click `儲存並測試 AI 連線` (Save and test AI connection); then click `建立 Siftly 欄位` (Create Siftly properties). The extension adds the properties and status options the database does not have yet (the page lists the six properties); existing properties are never renamed or overwritten.
 
 If the target database is missing from the list, check that it is shared with the Integration. You can also enter its URL or Data Source ID manually in advanced settings.
 

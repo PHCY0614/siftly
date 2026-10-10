@@ -168,7 +168,8 @@ async function saveNotionTarget(config, inspected) {
     dataSourceId: inspected.dataSourceId,
     databaseId: inspected.databaseId || config.databaseId,
     columnMap: inspected.prepared ? inspected.plan.map : null,
-    preferExistingTopicsByDataSource: preferences
+    preferExistingTopicsByDataSource: preferences,
+    verified: { ...config.verified, notion: true }
   };
   await writeConfig(nextConfig);
   return nextConfig;
@@ -190,7 +191,7 @@ async function recordFieldsCheck(error) {
  * Shared gate for scans, queue start, organizer, page inspection, and connection tests. Requires a
  * Notion token, reads the data source, and returns a bindColumns() instance for it. Never changes the
  * schema: absent columns or status options throw NOTION_FIELDS_MISSING, and only prepareNotionFields
- * (which the user confirms from a preview) creates them. Either field error is recorded in
+ * creates them. Either field error is recorded in
  * databaseCheck so the popup can point at the setup step.
  */
 async function readyNotion() {
@@ -208,21 +209,9 @@ async function readyNotion() {
   }
 }
 
-// What prepareNotionFields would create, for the confirmation dialog. GET only.
-async function previewNotionFields() {
-  const inspected = await inspectNotionFields(await readConfig(), await requireNotionToken());
-  return {
-    addedColumns: inspected.plan.added.map(column => ({ name: column.name, type: column.type })),
-    addedOptions: inspected.plan.addedOptions,
-    dataSourceId: inspected.dataSourceId,
-    language: inspected.plan.map.language,
-    title: N.dataSourceSummary(inspected.dataSource)?.title || ""
-  };
-}
-
 /**
- * The only place Siftly columns and status options are created. Runs after the user confirms the
- * preview. PATCHes exactly what is absent, then reads the data source back: the saved map needs the
+ * The only place Siftly columns and status options are created, and only when the user asks for it
+ * on the options page. PATCHes exactly what is absent, then reads the data source back: the saved map needs the
  * ids Notion assigned, and a retry after a partial update finds what already exists instead of adding
  * it twice. Writes no article page.
  */
@@ -256,7 +245,11 @@ async function prepareNotionFields() {
     stateCache.lastError = "";
     await persistState();
   }
-  return { ...created, dataSourceId: inspected.dataSourceId };
+  return {
+    ...created,
+    dataSourceId: inspected.dataSourceId,
+    title: N.dataSourceSummary(inspected.dataSource)?.title || ""
+  };
 }
 
 // The bound operations for the saved data source, for steps that follow a readyNotion() in an earlier call.
@@ -304,15 +297,6 @@ async function queryPagesByStatus(fields, status, token, options = {}) {
     cursor = response.has_more ? response.next_cursor || "" : "";
   } while (cursor);
   return pages;
-}
-
-async function hasPageByStatus(fields, status, token) {
-  const response = await notionRequest(`/v1/data_sources/${fields.dataSourceId}/query`, {
-    method: "POST",
-    body: { ...fields.queryPayload(status), page_size: 1 },
-    token
-  });
-  return Boolean(response.results?.length);
 }
 
 // ==== Settings persistence ====
@@ -449,7 +433,12 @@ function buildNextConfig(settings, current, resolved) {
     topicDictionary: targetChanged ? [] : normalizeTopicDictionary(current.topicDictionary),
     dataSourceId: targetChanged ? "" : current.dataSourceId,
     databaseId: targetChanged ? "" : current.databaseId,
-    columnMap: targetChanged ? null : current.columnMap
+    columnMap: targetChanged ? null : current.columnMap,
+    // A new token, key, or database has not been tested yet.
+    verified: {
+      notion: Boolean(current.verified?.notion) && !targetChanged && !S.cleanText(settings.notionToken),
+      ai: S.cleanText(settings.geminiKey) || S.cleanText(settings.vertexKey) ? "" : current.verified?.ai || ""
+    }
   };
   delete next.autoSelectHighConfidence;
   return next;
@@ -499,6 +488,7 @@ function buildSaveResponse(next, resolved) {
     hasGeminiKey,
     hasNotionToken,
     hasVertexKey,
+    setup: setupStatus(next, secrets),
     databaseChanged: targetChanged,
     clearedQueueCount
   };
@@ -557,6 +547,23 @@ async function saveSettings(settings) {
 }
 
 // ==== Settings UI and connection diagnostics ====
+function aiFingerprint(config) {
+  const provider = normalizeAiProvider(config.aiProvider);
+  return `${provider}:${provider === "vertex" ? config.vertexModel : config.geminiModel}`;
+}
+
+// Where setup stands, for the options-page summary. "saved" is entered but not yet proven to work.
+function setupStatus(config, secrets) {
+  const hasAiKey = normalizeAiProvider(config.aiProvider) === "vertex" ? secrets.hasVertexKey : secrets.hasGeminiKey;
+  const fieldsReady = Boolean(config.columnMap)
+    && compactNotionId(config.columnMap.dataSourceId) === compactNotionId(config.dataSourceId);
+  return {
+    notion: !secrets.hasNotionToken || !config.notionTarget ? "missing" : config.verified?.notion ? "verified" : "saved",
+    ai: !hasAiKey ? "missing" : config.verified?.ai === aiFingerprint(config) ? "verified" : "saved",
+    fields: fieldsReady ? "ready" : "missing"
+  };
+}
+
 /**
  * Options/popup config payload. Reads stored config and whether secrets exist.
  * Does not return Notion token or AI key values; exposes hasNotionToken and
@@ -582,18 +589,22 @@ async function getConfigForUi() {
     hasAiKey: aiProvider === "vertex" ? Boolean(vertexKey) : Boolean(geminiKey),
     hasGeminiKey: Boolean(geminiKey),
     hasNotionToken: Boolean(notionToken),
-    hasVertexKey: Boolean(vertexKey)
+    hasVertexKey: Boolean(vertexKey),
+    setup: setupStatus(config, {
+      hasGeminiKey: Boolean(geminiKey),
+      hasNotionToken: Boolean(notionToken),
+      hasVertexKey: Boolean(vertexKey)
+    })
   };
 }
 
 /**
- * Options connection test. Goes through readyNotion (read-only; persists resolved ids), then contacts
- * only the configured AI provider: Vertex countTokens on the selected model or the Gemini model list.
- * Queries whether any pending page exists. No article property writes. Missing pending pages set
- * databaseCheck NO_PENDING_PAGES with ready true and do not throw.
+ * Contacts only the configured AI provider: Vertex countTokens on the selected model, or the Gemini
+ * model list. Needs no Notion setup. Records the provider and model as verified only when the selected
+ * model is actually usable.
  */
-async function testConnections() {
-  const { config, dataSource, fields, token } = await readyNotion();
+async function testAiConnection() {
+  const config = await readConfig();
   const provider = normalizeAiProvider(config.aiProvider);
   let models = [];
   let selectedAvailable = false;
@@ -602,28 +613,27 @@ async function testConnections() {
     models = recommendedVertexModels();
     selectedAvailable = true;
   } else {
-    const apiKey = await requireGeminiKey();
-    models = await listGeminiModels(apiKey);
+    models = await listGeminiModels(await requireGeminiKey());
     selectedAvailable = models.some(model => model.name === config.geminiModel);
   }
-  const allTopicOptions = fields.topicOptions(dataSource.properties ?? {});
-  const usableTopicOptions = validTopicOptions(allTopicOptions);
-  const hasPending = await hasPageByStatus(fields, N.STATUS.pending, token);
-  stateCache.databaseCheck = {
-    checkedAt: new Date().toISOString(),
-    code: hasPending ? "READY" : "NO_PENDING_PAGES",
-    message: hasPending ? "" : NO_PENDING_PAGES_MESSAGE,
-    ready: true
-  };
-  stateCache.lastError = hasPending ? "" : NO_PENDING_PAGES_MESSAGE;
-  await persistState();
+  if (selectedAvailable) {
+    await writeConfig({ ...config, verified: { ...config.verified, ai: aiFingerprint(config) } });
+  }
+  return { modelCount: models.length, provider, selectedAvailable };
+}
+
+/**
+ * Confirms the saved token can read the chosen database, and records Notion as verified. Read-only:
+ * says whether the Siftly fields exist but creates nothing.
+ */
+async function testNotionConnection() {
+  const token = await requireNotionToken();
+  const config = await readConfig();
+  const inspected = await inspectNotionFields(config, token);
+  await saveNotionTarget(config, inspected);
   return {
-    dataSourceId: config.dataSourceId,
-    modelCount: models.length,
-    provider,
-    selectedAvailable,
-    ignoredTopicCount: allTopicOptions.length - usableTopicOptions.length,
-    hasPending,
-    topicCount: usableTopicOptions.length
+    dataSourceId: inspected.dataSourceId,
+    fieldsReady: inspected.prepared,
+    title: N.dataSourceSummary(inspected.dataSource)?.title || ""
   };
 }

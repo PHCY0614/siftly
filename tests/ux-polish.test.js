@@ -14,12 +14,10 @@ function source(name) {
 function testNotionStatusDialogHierarchy() {
   const html = source("options.html");
   const css = source("options.css");
-  assert.match(html, /id="notion-fields-dialog-message" class="confirm-dialog__message"/);
-  assert.match(html, /id="notion-fields-dialog-scope" class="confirm-dialog__scope"/);
-  assert.match(html, /只會新增上列欄位與狀態選項，之後切換介面語言不會改名；既有欄位、既有選項與文章內容都會保留。/);
-  assert.match(source("options.js"), /confirmNotionFieldsPreparation/);
-  assert.match(css, /\.confirm-dialog__message \{[^}]*font-size:\s*15px;/s);
-  assert.match(css, /\.confirm-dialog__scope \{[^}]*font-size:\s*13px;/s);
+  assert.match(html, /id="prepare-fields"[^>]*>建立 Siftly 欄位</);
+  assert.match(html, /只會新增資料庫裡還沒有的欄位與狀態選項；既有欄位、既有選項與文章內容都會保留。/);
+  assert.doesNotMatch(html, /<dialog/, "建立欄位不再經過確認對話框");
+  assert.doesNotMatch(css, /confirm-dialog/);
 }
 
 function testNotionWebAndFieldsTips() {
@@ -204,10 +202,7 @@ function testThemeSuggestionFormatting() {
 }
 
 function testConfirmDialogBoldWeight() {
-  const optionsCss = source("options.css");
   const popupCss = source("popup.css");
-  assert.match(optionsCss, /\.confirm-dialog__body h2 \{[^}]*font-weight:\s*700;/s);
-  assert.match(optionsCss, /\.confirm-dialog__message \{[^}]*font-weight:\s*400;/s);
   assert.match(popupCss, /\.confirm-dialog__body h2 \{[^}]*font-weight:\s*700;/s);
   assert.match(popupCss, /\.confirm-dialog__message \{[^}]*font-weight:\s*400;/s);
 }

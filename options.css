@@ -499,7 +499,9 @@ input:focus, select:focus, textarea:focus { border-color: var(--green); box-shad
   background: var(--paper);
   box-shadow: 0 10px 24px rgba(22, 44, 31, .14);
 }
-.actions { display: flex; flex-wrap: wrap; gap: 10px; }
+/* The bar only carries the page-wide status message, so it disappears with it. */
+.bottom-actions:not(:has(.status.visible)) { display: none; }
+.bottom-actions .status { margin: 0; }
 .secondary-actions { display: flex; justify-content: flex-end; margin-top: 10px; }
 .button {
   min-height: 42px;
@@ -740,47 +742,92 @@ input:focus, select:focus, textarea:focus { border-color: var(--green); box-shad
 .summary-instructions-status.is-busy { color: #385168; font-weight: 650; }
 .summary-instructions-status.is-ready { color: var(--green-dark); }
 
-.confirm-dialog {
-  width: min(500px, calc(100% - 32px));
-  max-width: none;
-  padding: 0;
-  border: 0;
-  border-radius: 16px;
-  background: var(--panel);
-  color: var(--ink);
-  box-shadow: 0 22px 70px rgba(15, 35, 23, .24);
+/* ---- Setup summary ---- */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
-.confirm-dialog::backdrop { background: rgba(18, 28, 22, .48); }
-.confirm-dialog__surface { display: grid; gap: 0; }
-.confirm-dialog__body { padding: 26px 26px 20px; }
-.confirm-dialog__body h2 {
-  margin-bottom: 12px;
-  font-weight: 700;
+.setup-summary {
+  margin-bottom: 24px;
+  padding: 20px 22px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: #f4f8f5;
 }
-.confirm-dialog__body p { overflow-wrap: anywhere; }
-.confirm-dialog__message {
+.setup-summary__items {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
   margin: 0;
-  font-size: 15px;
-  font-weight: 400;
-  line-height: 1.5;
+  padding: 0;
+  list-style: none;
 }
-.confirm-dialog__scope {
-  margin-top: 14px;
-  padding: 12px 14px;
-  border-radius: 10px;
-  background: var(--green-soft);
-  color: var(--green-dark);
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 1.55;
+.setup-summary__items li {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 9px;
+  align-items: center;
 }
-.confirm-dialog__actions {
+.setup-summary__items a { color: var(--ink); font-weight: 750; text-decoration: none; }
+.setup-summary__items a:hover { text-decoration: underline; }
+.setup-summary__state { grid-column: 2; color: var(--muted); font-size: 13px; }
+.setup-summary__mark {
+  width: 14px;
+  height: 14px;
+  border: 2px solid #b9c6bd;
+  border-radius: 50%;
+}
+.setup-summary__items [data-state="saved"] .setup-summary__mark { border-color: var(--amber); border-style: dashed; }
+.setup-summary__items [data-state="done"] .setup-summary__mark { border-color: var(--green); background: var(--green); }
+.setup-summary__next {
   display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  padding: 16px 26px 22px;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 16px;
+  padding-top: 14px;
   border-top: 1px solid var(--line);
 }
+.setup-summary__next p { margin: 0; font-weight: 700; }
+
+/* ---- Collapsible sections ---- */
+.section-toggle {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  min-height: 34px;
+  margin-left: auto;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  text-align: right;
+  cursor: pointer;
+}
+.section-toggle:focus-visible { outline: 3px solid rgba(23, 107, 69, .22); outline-offset: 2px; }
+.section-toggle__chevron { font-size: 16px; transition: transform .15s ease; }
+.panel.is-collapsed .section-toggle__chevron { transform: rotate(-90deg); }
+.panel.is-collapsed > :not(.section-heading) { display: none; }
+.panel.is-collapsed .section-heading { margin-bottom: 0; }
+.panel.is-collapsed .section-heading p,
+.panel:not(.is-collapsed) .section-toggle__summary { display: none; }
+
+.fields-status { margin: 0; font-weight: 700; }
+.provider-details,
+.field-details { margin-top: 12px; }
+.provider-details > summary,
+.field-details > summary,
+.notion-setup-guide > summary { color: var(--green-dark); font-size: 14px; font-weight: 750; cursor: pointer; }
+.field-details .field-grid { margin-top: 12px; }
+.field-grid span b { margin-right: 8px; }
 
 @media (max-width: 960px) {
   .section-navigation { left: 8px; }
@@ -799,13 +846,11 @@ input:focus, select:focus, textarea:focus { border-color: var(--green); box-shad
   .notion-picker-actions { align-items: stretch; flex-direction: column; }
   .notion-picker-actions .button { width: 100%; }
   .field-grid { grid-template-columns: 1fr; }
+  .setup-summary__items { grid-template-columns: 1fr; }
   .spec-grid { grid-template-columns: 1fr 1fr; }
   .actions .button { width: 100%; }
   .bottom-actions { bottom: 8px; padding: 10px; }
   .secondary-actions { justify-content: flex-start; }
-  .confirm-dialog__body { padding: 22px 20px 18px; }
-  .confirm-dialog__actions { flex-direction: column; padding: 14px 20px 20px; }
-  .confirm-dialog__actions .button { width: 100%; }
   .topic-group-head { grid-template-columns: 18px minmax(0, 1fr); }
   .topic-group-head .confidence { grid-column: 2; justify-self: start; }
   .organizer-primary-actions .button,
@@ -817,5 +862,6 @@ input:focus, select:focus, textarea:focus { border-color: var(--green); box-shad
 
 @media (prefers-reduced-motion: reduce) {
   .section-navigation__mark,
-  .section-navigation__label { transition: none; }
+  .section-navigation__label,
+  .section-toggle__chevron { transition: none; }
 }

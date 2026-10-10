@@ -527,26 +527,39 @@ async function testConfirmedFieldPreparation() {
   };
 
   const patchCount = () => requests.filter(request => request.options.method === "PATCH").length;
-  let response = await send({ type: "TEST_CONNECTIONS" });
+  let response = await send({ type: "TEST_NOTION_CONNECTION" });
+  assert.equal(response.ok, true, response.error?.message);
+  assert.equal(response.data.fieldsReady, false);
+  assert.equal(response.data.title, "內容資料庫");
+  assert.equal(localData[CONFIG_KEY].verified.notion, true);
+  assert.equal(patchCount(), 0, "連接資料庫不得建立欄位");
+
+  response = await send({ type: "LIST_UNANALYZED_ARTICLES" });
   assert.equal(response.ok, false);
   assert.equal(response.error.code, "NOTION_FIELDS_MISSING");
-  assert.equal(patchCount(), 0, "測試連線不得建立欄位");
+  assert.equal(patchCount(), 0, "使用資料庫的流程不得建立欄位");
 
-  response = await send({ type: "PREVIEW_NOTION_FIELDS" });
-  assert.equal(response.ok, true);
-  assert.equal(response.data.title, "內容資料庫");
-  assert.deepEqual(Array.from(response.data.addedColumns, column => column.name), Object.values(N.PROPERTY_NAMES));
-  assert.equal(patchCount(), 0, "預覽不得建立欄位");
+  // The AI test stands alone: it must not need, or touch, the Notion database.
+  requests.length = 0;
+  response = await send({ type: "TEST_AI_CONNECTION" });
+  assert.equal(response.ok, false);
+  assert.equal(response.error.code, "GEMINI_KEY_MISSING");
+  assert.equal(requests.length, 0, "AI 測試不得連到 Notion");
 
   requests.length = 0;
   response = await send({ type: "PREPARE_NOTION_FIELDS" });
   assert.equal(response.ok, true, response.error?.message);
   assert.deepEqual([...response.data.addedColumns], Object.values(N.PROPERTY_NAMES));
+  assert.equal(response.data.title, "內容資料庫");
   assert.equal(patchCount(), 1);
   const patchBody = JSON.parse(requests.find(request => request.options.method === "PATCH").options.body);
   assert.deepEqual(Object.keys(patchBody.properties), Object.values(N.PROPERTY_NAMES));
   assert.equal(localData[CONFIG_KEY].columnMap.dataSourceId, SOURCE_A);
   assert.equal(localData[CONFIG_KEY].columnMap.language, "zh");
+  const prepared = await send({ type: "GET_CONFIG" });
+  assert.equal(prepared.data.setup.fields, "ready");
+  assert.equal(prepared.data.setup.notion, "verified", "讀得到資料庫即視為 Notion 已驗證");
+  assert.equal(prepared.data.setup.ai, "missing");
 
   requests.length = 0;
   response = await send({ type: "PREPARE_NOTION_FIELDS" });
@@ -557,9 +570,10 @@ async function testConfirmedFieldPreparation() {
   // Switching the interface language must not add a second set of columns to a prepared data source.
   localData[CONFIG_KEY].uiLanguage = "en";
   requests.length = 0;
-  response = await send({ type: "PREVIEW_NOTION_FIELDS" });
+  response = await send({ type: "PREPARE_NOTION_FIELDS" });
   assert.deepEqual([...response.data.addedColumns], []);
-  assert.equal(response.data.language, "zh");
+  assert.equal(patchCount(), 0);
+  assert.equal(localData[CONFIG_KEY].columnMap.language, "zh");
   localData[CONFIG_KEY].uiLanguage = "zh";
 
   properties = {
@@ -668,17 +682,14 @@ function testRepositoryGuards() {
   assert.match(options, /aiProvider,\s+notionDataSourceSelect,\s+geminiModel/);
   assert.match(options, /enhancedSelects[.]get\(notionDataSourceSelect\)[?][.]sync\(\)/);
   assert.match(options, /error[.]code = response[?][.]error[?][.]code/);
-  assert.match(options, /confirmNotionFieldsPreparation/);
-  assert.match(options, /notionFieldsDialog[.]showModal\(\)/);
   assert.match(options, /PREPARE_NOTION_FIELDS/);
 
   const html = source("options.html");
   assert.match(html, /id="notion-data-source-status"[^>]*aria-live="polite"/);
   assert.match(html, /<details class="notion-advanced">/);
   assert.match(html, /Notion 中既有內容不會被刪除/);
-  assert.match(html, /id="notion-fields-dialog"/);
-  assert.match(html, /value="cancel" autofocus>取消/);
-  assert.match(html, /value="confirm">建立欄位/);
+  assert.match(html, /id="prepare-fields"/);
+  assert.match(html, /id="connect-notion"/);
   assert.match(html, /id="fields-heading">準備 Notion 欄位/);
   assert.doesNotMatch(html, /Notion-AI-Analyzer/);
 

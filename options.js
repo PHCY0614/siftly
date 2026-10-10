@@ -71,7 +71,7 @@ const manualExistingTopic = document.querySelector("#manual-existing-topic");
 const manualCustomTopic = document.querySelector("#manual-custom-topic");
 const modelSummary = document.querySelector("#model-summary");
 const saveButton = document.querySelector("#save");
-const testButton = document.querySelector("#test");
+const connectNotionButtons = [...document.querySelectorAll("#connect-notion, #connect-notion-manual")];
 const loadModelsButton = document.querySelector("#load-models");
 const clearButton = document.querySelector("#clear-credentials");
 const importDictionary = document.querySelector("#import-dictionary");
@@ -81,9 +81,13 @@ const importModeDisplay = document.querySelector("#import-mode-display");
 const importModeMenu = document.querySelector("#import-mode-menu");
 const importModeToggle = document.querySelector("#import-mode-toggle");
 const importSplitButton = document.querySelector("#import-split-btn");
-const notionFieldsDialog = document.querySelector("#notion-fields-dialog");
-const notionFieldsDialogMessage = document.querySelector("#notion-fields-dialog-message");
-const notionFieldsCancel = document.querySelector("#notion-fields-cancel");
+const setupNextText = document.querySelector("#setup-next-text");
+const setupNextAction = document.querySelector("#setup-next-action");
+const fieldsStatus = document.querySelector("#fields-status");
+const prepareFieldsButton = document.querySelector("#prepare-fields");
+const fieldDetails = document.querySelector("#field-details");
+const testAiButton = document.querySelector("#test-ai");
+const notionSetupGuide = document.querySelector("#notion-setup-guide");
 const enhancedSelects = new Map();
 let organizerData = null;
 let manualCandidateName = "";
@@ -111,7 +115,6 @@ let articleActionBusy = false;
 let articleDataSourceId = "";
 let articlePreparationGeneration = 0;
 const MAX_ARTICLE_CANDIDATES = 2000;
-const NO_PENDING_MESSAGE = "目前沒有待分析文章。請在上方「準備待分析文章」選取文章加入待分析。";
 const DEFAULT_MODEL = "gemini-3.5-flash-lite";
 
 // ==== Shared custom select ====
@@ -360,42 +363,6 @@ function showStatus(message, kind = "info", localTarget = null) {
   statusBox.className = `status visible ${kind}`;
 }
 
-const NOTION_TYPE_LABELS = { rich_text: "文字", multi_select: "多選", select: "單選" };
-
-// Shows what would be created in which database, and resolves true only when the user confirms.
-function confirmNotionFieldsPreparation(preview) {
-  const parts = [];
-  if (preview.addedColumns.length) {
-    parts.push(`建立 ${preview.addedColumns.length} 個欄位：${preview.addedColumns
-      .map(column => `${column.name}（${NOTION_TYPE_LABELS[column.type] || column.type}）`).join("、")}`);
-  }
-  if (preview.addedOptions.length) parts.push(`補上狀態選項：${preview.addedOptions.join("、")}`);
-  notionFieldsDialogMessage.textContent = `將在「${preview.title || "目前的資料庫"}」${parts.join("；")}。`;
-  notionFieldsDialog.returnValue = "cancel";
-  return new Promise(resolve => {
-    notionFieldsDialog.addEventListener("close", () => {
-      resolve(notionFieldsDialog.returnValue === "confirm");
-    }, { once: true });
-    notionFieldsDialog.showModal();
-    notionFieldsCancel.focus();
-  });
-}
-
-// Runs `request`; when the database has no Siftly fields yet, previews them, and after the user
-// confirms creates them and runs `request` once more. Returns what was created, or null.
-async function withNotionFields(request, onPreparing) {
-  try {
-    return { result: await request(), prepared: null };
-  } catch (error) {
-    if (error.code !== "NOTION_FIELDS_MISSING") throw error;
-    if (!await confirmNotionFieldsPreparation(await send("PREVIEW_NOTION_FIELDS"))) throw error;
-    onPreparing();
-    const prepared = await send("PREPARE_NOTION_FIELDS");
-    return { result: await request(), prepared };
-  }
-}
-
-// ==== First-use article preparation ====
 function articleSavedDataSourceId() {
   return savedDataSourceId || compactTargetId(savedNotionTarget);
 }
@@ -516,14 +483,9 @@ function normalizeArticlePages(pages) {
   return (Array.isArray(pages) ? pages : []).filter(page => page && typeof page.id === "string" && page.id.trim());
 }
 
-async function requestArticleCandidates(payload, generation, canPrepare = true) {
+async function requestArticleCandidates(payload, generation) {
   if (generation !== articlePreparationGeneration) return null;
-  if (!canPrepare) return send("LIST_UNANALYZED_ARTICLES", payload);
-  const { result } = await withNotionFields(
-    () => (generation === articlePreparationGeneration ? send("LIST_UNANALYZED_ARTICLES", payload) : null),
-    () => setArticlePreparationStatus("正在準備 Notion 欄位，完成後會重新載入文章…")
-  );
-  return result;
+  return send("LIST_UNANALYZED_ARTICLES", payload);
 }
 
 async function loadArticleCandidates(reset = false) {
@@ -594,7 +556,7 @@ async function setSelectedArticleStatus(status) {
   const generation = articlePreparationGeneration;
   const dataSourceId = articleDataSourceId || articleSavedDataSourceId();
   if (!dataSourceId) {
-    setArticlePreparationStatus("找不到已保存的資料庫來源，請先儲存設定。", "error");
+    setArticlePreparationStatus("找不到已保存的資料庫來源，請先按「連接資料庫」。", "error");
     return;
   }
   articleActionBusy = true;
@@ -697,9 +659,8 @@ function settingsFromForm() {
 // ==== AI provider and model discovery ====
 /**
  * Returns the model <select> for the currently chosen provider. Sends no
- * messages. Does not change values; LIST_MODELS and TEST_CONNECTIONS are
- * sent by the scan/test buttons. Provider tests, schema, and AI calls stay
- * in background.js.
+ * messages. Does not change values; provider tests and AI calls stay in
+ * background.js.
  */
 function activeModelElement() {
   if (aiProvider.value === "vertex") return vertexModel;
@@ -711,8 +672,7 @@ function activeModelElement() {
  * syncs enhanced selects. Sends no messages. Updates Gemini/Vertex settings
  * and model-select hidden state, the
  * load-models button label, and modelSummary. LIST_MODELS is sent by the
- * scan/load-models button; TEST_CONNECTIONS by the test button. Provider tests,
- * schema PATCHes, and AI calls stay in background.js.
+ * scan/load-models button. Provider tests and AI calls stay in background.js.
  */
 function updateProviderUi() {
   const provider = aiProvider.value;
@@ -722,7 +682,7 @@ function updateProviderUi() {
   vertexModel.hidden = provider !== "vertex";
   loadModelsButton.textContent = provider === "vertex" ? "載入建議模型" : "掃描可用模型";
   modelSummary.textContent = provider === "vertex"
-      ? "掃描前會先保存目前設定，再載入 Vertex AI 建議模型；按「儲存並測試連線、準備欄位」會使用免費的 Token 計數要求驗證所選模型與金鑰。"
+      ? "掃描前會先保存目前設定，再載入 Vertex AI 建議模型；按「儲存並測試 AI 連線」會使用免費的 Token 計數要求驗證所選模型與金鑰。"
       : "掃描前會先保存目前設定，再讀取這把 Google AI Studio Key 可見、支援純文字 generateContent 的模型。";
   syncEnhancedSelects();
 }
@@ -731,10 +691,13 @@ function setBusy(isBusy) {
   settingsBusy = isBusy;
   for (const button of [
     saveButton,
-    testButton,
+    ...connectNotionButtons,
     loadModelsButton,
     loadNotionDataSourcesButton,
-    clearButton
+    clearButton,
+    prepareFieldsButton,
+    testAiButton,
+    setupNextAction
   ]) button.disabled = isBusy;
   updateSummaryInstructionsStatus();
   updateArticlePreparationUi();
@@ -883,11 +846,12 @@ function renderNotionDataSources(dataSources, limitReached) {
 /**
  * SAVE_SETTINGS from the form. Local guards for empty target/model and
  * output-spec ranges run first. Secrets are not
- * written back into the inputs; placeholders show has*Key. Does not call
- * TEST_CONNECTIONS or read the Notion schema.
+ * written back into the inputs; placeholders show has*Key. Does not test
+ * any connection or read the Notion schema.
  */
-async function saveSettings(showConfirmation = true) {
-  if (!notionTarget.value.trim()) {
+// requireNotionTarget is false for steps that do not touch Notion, such as testing the AI service.
+async function saveSettings(showConfirmation = true, requireNotionTarget = true) {
+  if (requireNotionTarget && !notionTarget.value.trim()) {
     throw new Error("請先選擇 Notion 資料庫，或在進階設定輸入資料庫網址或 Data Source ID");
   }
   if (!activeModelElement().value.trim()) throw new Error("請選擇分析模型");
@@ -901,6 +865,7 @@ async function saveSettings(showConfirmation = true) {
   savedNotionTarget = config.notionTarget || "";
   savedDataSourceId = config.dataSourceId || "";
   updateDatabaseChangeWarning();
+  renderSetup(config.setup);
   notionToken.value = "";
   geminiKey.value = "";
   vertexKey.value = "";
@@ -971,6 +936,7 @@ async function loadConfig() {
     syncEnhancedSelects();
     updateDatabaseChangeWarning();
     updateArticlePreparationUi();
+    renderSetup(config.setup);
     organizerData = await send("GET_TOPIC_ORGANIZER");
     renderOrganizer();
     if (articlePreparation.open && articleTargetIsSaved()) void loadArticleCandidates(true);
@@ -1024,7 +990,7 @@ async function refreshOrganizerAfterTargetChange() {
 }
 
 notionTarget.addEventListener("input", () => {
-  clearArticleCandidates("資料庫選擇已變更，請先儲存設定後再載入文章。");
+  clearArticleCandidates("資料庫選擇已變更，請先按「連接資料庫」後再載入文章。");
   const key = compactTargetId(notionTarget.value);
   preferExistingTopics.checked = Boolean(key && topicOrganizerPreferences[key]);
   const matchingOption = [...notionDataSourceSelect.options]
@@ -1119,42 +1085,10 @@ form.addEventListener("submit", async event => {
   }
 });
 
-testButton.addEventListener("click", async () => {
-  setBusy(true);
-  showStatus("正在儲存、連接 Notion、準備欄位並驗證 AI 服務…", "info", connectionStatus);
-  try {
-    await saveSettings(false);
-    const { result, prepared } = await withNotionFields(
-      () => send("TEST_CONNECTIONS"),
-      () => showStatus("正在準備 Notion 欄位，完成後會繼續測試連線…", "info", connectionStatus)
-    );
-    const changes = [
-      prepared?.addedColumns.length ? `新增 ${prepared.addedColumns.join("、")}` : "欄位已齊全",
-      prepared?.addedOptions.length ? `補上狀態選項 ${prepared.addedOptions.join("、")}` : "狀態選項已齊全"
-    ].join("；");
-    const modelNote = result.selectedAvailable
-      ? "目前模型可用"
-      : "目前模型未出現在清單，請按「掃描所有可用模型」改選";
-    const ignoredNote = result.ignoredTopicCount
-      ? `，另有 ${result.ignoredTopicCount} 個過長或格式不符的舊主題已忽略`
-      : "";
-    const providerName = result.provider === "vertex" ? "Vertex AI" : "Google AI Studio";
-    const pendingNote = result.hasPending ? "" : ` ${NO_PENDING_MESSAGE}`;
-    const fieldTip = prepared?.addedColumns.length
-      ? " 若看不到新建欄位，請到 Notion 既有資料庫檢視中把它們顯示出來。"
-      : "";
-    showStatus(`連線成功。${changes}；目前有 ${result.topicCount} 個可用 AI 主題${ignoredNote}；${providerName} ${modelNote}。${pendingNote}${fieldTip}`, result.selectedAvailable && result.hasPending ? "success" : "info", connectionStatus);
-  } catch (error) {
-    showStatus(error.message, "error", connectionStatus);
-  } finally {
-    setBusy(false);
-  }
-});
-
 /**
  * SAVE_SETTINGS then LIST_MODELS. renderModels replaces options on the
  * active provider's model select and syncs its AnalyzerSelect. Provider tests
- * (TEST_CONNECTIONS), schema PATCHes, and AI calls stay in background.js.
+ * and AI calls stay in background.js.
  */
 loadModelsButton.addEventListener("click", async () => {
   setBusy(true);
@@ -1166,7 +1100,7 @@ loadModelsButton.addEventListener("click", async () => {
     const previous = select.value.trim();
     renderModels(select, result.models, previous, result.recommended);
     modelSummary.textContent = `掃描前已保存目前設定。完成，共有 ${result.models.length} 個可選模型。目前選擇：${select.value}。`;
-    showStatus(`已完整掃描 ${result.models.length} 個可用文字模型。選好後請按「儲存設定」。`, "success", modelOperationStatus);
+    showStatus(`已完整掃描 ${result.models.length} 個可用文字模型。選好後請按「儲存並測試 AI 連線」。`, "success", modelOperationStatus);
   } catch (error) {
     showStatus(error.message, "error", modelOperationStatus);
   } finally {
@@ -1193,6 +1127,7 @@ clearButton.addEventListener("click", async () => {
     showStatus(error.message, "error");
   } finally {
     setBusy(false);
+    await refreshSetup();
   }
 });
 
@@ -1844,6 +1779,204 @@ importDictionary.addEventListener("change", async event => {
   finally { event.target.value = ""; }
 });
 
+// ==== Setup summary and collapsible sections ====
+const SETUP_STATE_LABELS = { missing: "尚未設定", saved: "已儲存，尚未驗證", verified: "已驗證" };
+let nextSetupStep = null;
+
+function setSectionCollapsed(section, collapsed) {
+  section.classList.toggle("is-collapsed", collapsed);
+  section.querySelector(".section-toggle").setAttribute("aria-expanded", String(!collapsed));
+}
+
+// Sections follow setup progress only until the user opens or closes one themselves.
+function autoCollapseSection(id, collapsed) {
+  const section = document.getElementById(id);
+  if (!section.dataset.userToggled) setSectionCollapsed(section, collapsed);
+}
+
+function revealSection(id) {
+  const section = document.getElementById(id);
+  section.dataset.userToggled = "true";
+  setSectionCollapsed(section, false);
+  const heading = section.querySelector("h2");
+  heading.tabIndex = -1;
+  heading.focus({ preventScroll: true });
+  section.scrollIntoView({
+    behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+    block: "start"
+  });
+}
+
+function initSectionToggles() {
+  for (const section of document.querySelectorAll("section.panel")) {
+    const heading = section.querySelector(".section-heading");
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "section-toggle";
+    toggle.setAttribute("aria-expanded", "true");
+    toggle.setAttribute("aria-controls", section.id);
+    // Hidden text instead of aria-label, so a screen reader also reads the visible summary beside it.
+    const label = document.createElement("span");
+    label.className = "visually-hidden";
+    label.textContent = `展開或收合「${heading.querySelector("h2").textContent}」`;
+    const summary = document.createElement("span");
+    summary.className = "section-toggle__summary";
+    const chevron = document.createElement("span");
+    chevron.className = "section-toggle__chevron";
+    chevron.setAttribute("aria-hidden", "true");
+    chevron.textContent = "▾";
+    toggle.append(label, summary, chevron);
+    toggle.addEventListener("click", () => {
+      section.dataset.userToggled = "true";
+      setSectionCollapsed(section, !section.classList.contains("is-collapsed"));
+    });
+    heading.append(toggle);
+  }
+  for (const link of document.querySelectorAll("[data-section-link]")) {
+    link.addEventListener("click", event => {
+      event.preventDefault();
+      revealSection(link.dataset.sectionLink);
+    });
+  }
+}
+
+function setSectionSummary(id, text) {
+  document.getElementById(id).querySelector(".section-toggle__summary").textContent = text;
+}
+
+async function openSiftlyPopup() {
+  try {
+    await chrome.action.openPopup();
+  } catch {
+    // Chrome may refuse to open the popup from a page; the toolbar icon always works.
+    showStatus("請點瀏覽器工具列上的 Siftly 圖示開始分析。", "info");
+  }
+}
+
+/**
+ * Shows where setup stands (from the background's `setup`), the single next step, and a one-line
+ * summary on each finished section. "saved" is entered but not yet proven by a connection test.
+ */
+function renderSetup(setup) {
+  if (!setup) return;
+  const fieldsReady = setup.fields === "ready";
+  // Only a verified connection has actually read the database; before that the fields are unknown, not absent.
+  const fieldsUnknown = !fieldsReady && setup.notion !== "verified";
+  const fieldsLabel = fieldsReady ? "已就緒" : fieldsUnknown ? "尚未檢查" : "尚未建立";
+  for (const [key, state] of Object.entries(setup)) {
+    const item = document.querySelector(`[data-setup-item="${key}"]`);
+    item.dataset.state = state === "verified" || state === "ready" ? "done" : state;
+    item.querySelector(".setup-summary__state").textContent = key === "fields" ? fieldsLabel : SETUP_STATE_LABELS[state];
+  }
+  if (setup.notion === "missing") {
+    nextSetupStep = { text: "下一步：貼上 Notion Token 並選擇資料庫", action: "前往連接 Notion", run: () => revealSection("notion-settings") };
+  } else if (setup.notion !== "verified") {
+    nextSetupStep = { text: "下一步：確認 Notion 資料庫連線", action: "連接資料庫", run: connectNotionFromUi };
+  } else if (setup.ai === "missing") {
+    nextSetupStep = { text: "下一步：選擇 AI 服務並填入金鑰", action: "前往連接 AI 服務", run: () => revealSection("ai-settings") };
+  } else if (setup.ai !== "verified") {
+    nextSetupStep = { text: "下一步：測試 AI 服務連線", action: "儲存並測試 AI 連線", run: testAiConnectionFromUi };
+  } else if (!fieldsReady) {
+    nextSetupStep = { text: "下一步：建立 Siftly 需要的 Notion 欄位", action: "建立 Siftly 欄位", run: prepareNotionFieldsFromUi };
+  } else {
+    nextSetupStep = { text: "設定完成，可以開始分析。", action: "開啟 Siftly 開始分析", run: openSiftlyPopup };
+  }
+  setupNextText.textContent = nextSetupStep.text;
+  setupNextAction.textContent = nextSetupStep.action;
+  setupNextAction.hidden = false;
+
+  setSectionSummary("notion-settings", SETUP_STATE_LABELS[setup.notion]);
+  setSectionSummary("ai-settings", SETUP_STATE_LABELS[setup.ai]);
+  setSectionSummary("notion-fields", fieldsLabel);
+  setSectionSummary("topic-organizer-panel", fieldsReady ? "" : "準備欄位並分析文章後才有主題可整理");
+  autoCollapseSection("notion-settings", setup.notion === "verified");
+  autoCollapseSection("ai-settings", setup.ai === "verified");
+  autoCollapseSection("notion-fields", fieldsReady);
+  autoCollapseSection("topic-organizer-panel", !fieldsReady);
+
+  if (setup.notion === "missing") notionSetupGuide.open = true;
+  articlePreparation.hidden = !fieldsReady;
+  fieldsStatus.textContent = fieldsReady
+    ? "欄位已就緒，可以開始分析。"
+    : setup.notion === "missing" ? "請先連接 Notion，再準備欄位。"
+      : fieldsUnknown ? "還沒檢查這個資料庫的欄位。" : "這個資料庫還沒有 Siftly 欄位。";
+  prepareFieldsButton.textContent = fieldsReady ? "重新檢查欄位" : fieldsUnknown ? "檢查並建立 Siftly 欄位" : "建立 Siftly 欄位";
+  // The list is the only description of what the button adds, so it stays open until the fields exist.
+  if (!fieldsReady) fieldDetails.open = true;
+}
+
+async function refreshSetup() {
+  try {
+    renderSetup((await send("GET_CONFIG")).setup);
+  } catch {
+    // The summary keeps its last state; the action that just ran already reported its own result.
+  }
+}
+
+// Saves the form, then adds the fields and status options the database does not have yet.
+async function prepareNotionFieldsFromUi() {
+  setBusy(true);
+  showStatus("正在檢查並建立 Notion 欄位…", "info", connectionStatus);
+  try {
+    await saveSettings(false);
+    const prepared = await send("PREPARE_NOTION_FIELDS");
+    const created = [...prepared.addedColumns, ...prepared.addedOptions];
+    showStatus(created.length
+      ? `已在「${prepared.title || "Notion 資料庫"}」建立：${created.join("、")}。若看不到新建欄位，請到 Notion 既有資料庫檢視中把它們顯示出來。`
+      : "欄位已齊全，不需要修改 Notion。", "success", connectionStatus);
+  } catch (error) {
+    showStatus(error.message, "error", connectionStatus);
+  } finally {
+    setBusy(false);
+    await refreshSetup();
+  }
+}
+
+// Saves the chosen database and confirms the token can read it. Creates nothing in Notion.
+async function connectNotionFromUi() {
+  setBusy(true);
+  showNotionDataSourceStatus("正在連接資料庫…");
+  try {
+    await saveSettings(false);
+    const result = await send("TEST_NOTION_CONNECTION");
+    showNotionDataSourceStatus(
+      `已連接「${result.title || "Notion 資料庫"}」。${result.fieldsReady ? "Siftly 欄位已就緒。" : "接著請到「準備 Notion 欄位」建立欄位。"}`,
+      "success"
+    );
+  } catch (error) {
+    showNotionDataSourceStatus(error.message, "error");
+  } finally {
+    setBusy(false);
+    await refreshSetup();
+  }
+}
+
+// Tests the AI service on its own; needs no Notion database or fields.
+async function testAiConnectionFromUi() {
+  setBusy(true);
+  showStatus("正在儲存並測試 AI 服務…", "info", modelOperationStatus);
+  try {
+    await saveSettings(false, false);
+    const result = await send("TEST_AI_CONNECTION");
+    const providerName = result.provider === "vertex" ? "Vertex AI" : "Google AI Studio";
+    showStatus(result.selectedAvailable
+      ? `${providerName} 連線成功，目前模型可用。`
+      : `${providerName} 連線成功，但目前模型未出現在清單，請按「掃描所有可用模型」改選。`,
+    result.selectedAvailable ? "success" : "info", modelOperationStatus);
+  } catch (error) {
+    showStatus(error.message, "error", modelOperationStatus);
+  } finally {
+    setBusy(false);
+    await refreshSetup();
+  }
+}
+
+setupNextAction.addEventListener("click", () => nextSetupStep?.run());
+testAiButton.addEventListener("click", testAiConnectionFromUi);
+for (const button of connectNotionButtons) button.addEventListener("click", connectNotionFromUi);
+prepareFieldsButton.addEventListener("click", prepareNotionFieldsFromUi);
+initSectionToggles();
+
 // ==== Settings section navigation ====
 function initSectionNavigation() {
   const navigation = document.querySelector("#section-navigation");
@@ -1894,6 +2027,7 @@ function initSectionNavigation() {
       for (let ancestor = section.target; ancestor; ancestor = ancestor.parentElement) {
         if (ancestor.tagName === "DETAILS") ancestor.open = true;
       }
+      if (section.target.classList.contains("panel")) setSectionCollapsed(section.target, false);
       if (section.target.id === "advanced-settings") {
         const details = section.target.querySelector("details");
         if (details) details.open = true;
