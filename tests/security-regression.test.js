@@ -8,6 +8,7 @@ const path = require("node:path");
 const root = path.resolve(__dirname, "..");
 const G = require(path.join(root, "gemini.js"));
 const N = require(path.join(root, "notion.js"));
+const P = require(path.join(root, "prompt.js"));
 
 function source(name) {
   return fs.readFileSync(path.join(root, name), "utf8");
@@ -122,9 +123,11 @@ function testRepositoryGuards() {
   const logFunction = popup.slice(popup.indexOf("function failureLog"), popup.indexOf("async function copyText"));
   assert.doesNotMatch(logFunction, /item\.(?:id|title|url|error)|rawOutput/);
 
-  const normalizedPrompt = source("prompt.js").replace(/\r\n/g, "\n");
-  const promptHash = crypto.createHash("sha256").update(normalizedPrompt).digest("hex").toUpperCase();
-  assert.equal(promptHash, "E28A1F8D044A4787478C3978B7DA9F65D30E83397A096C69B271E22C70E06A98");
+  // Pin the built-in prompts while allowing the opt-in summary preference builder.
+  const builtInPrompts = [P.DEFAULT_ANALYSIS_PROMPT, P.SYSTEM_PROMPT, P.CHUNK_SYSTEM_PROMPT,
+    P.TOPIC_ORGANIZER_SYSTEM_PROMPT, P.TOPIC_STANDARD_MATCHER_SYSTEM_PROMPT];
+  const promptHash = crypto.createHash("sha256").update(JSON.stringify(builtInPrompts)).digest("hex").toUpperCase();
+  assert.equal(promptHash, "9015F82AA03F8D4EA7B68A587147A4F55C33D1B9705FA942E6E5146B570F47CD");
 }
 
 function testAdvancedSettingsHidePromptControls() {

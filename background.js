@@ -13,6 +13,7 @@ importScripts(
   "background/settings.js",
   "background/analysis.js",
   "background/queue.js",
+  "background/article-selection.js",
   "background/topic-organizer.js",
   "background/topic-review.js",
   "background/messages.js"

@@ -27,7 +27,8 @@
     topicOrganize: "待主題整理",
     topicReview: "待主題確認",
     analyzed: "已分析",
-    failed: "分析失敗"
+    failed: "分析失敗",
+    skipped: "不分析"
   });
   const STATUS_OPTIONS = Object.freeze([
     { name: STATUS.pending, color: "yellow" },
@@ -35,13 +36,14 @@
     { name: STATUS.topicOrganize, color: "orange" },
     { name: STATUS.topicReview, color: "orange" },
     { name: STATUS.analyzed, color: "green" },
-    { name: STATUS.failed, color: "red" }
+    { name: STATUS.failed, color: "red" },
+    { name: STATUS.skipped, color: "gray" }
   ]);
   const DATABASE_SETUP_MESSAGES = Object.freeze({
     statusFieldMissing: "找不到「整理狀態」欄位。請在 Notion 資料庫新增一個名為「整理狀態」的選取欄位，並加入「待分析」選項。",
     statusFieldType: "「整理狀態」欄位類型不正確。請將它設定為 Select，並加入「待分析」選項。",
     pendingOptionMissing: "「整理狀態」尚未加入「待分析」選項。請先在 Notion 加入「待分析」，再將想分析的文章設為「待分析」。",
-    noPendingPages: "目前沒有待分析文章。請先在 Notion 將要處理文章的「整理狀態」設為「待分析」。"
+    noPendingPages: "目前沒有待分析文章。可在設定頁使用「準備待分析文章」批次選取，或在 Notion 將文章的「整理狀態」設為「待分析」。"
   });
   const EXPECTED_TYPES = Object.freeze({
     [PROPERTY_NAMES.aiTitle]: "rich_text",
@@ -346,6 +348,38 @@
     return payload;
   }
 
+  // Any existing AI value is protected, including partial results or whitespace.
+  function isUnanalyzedArticle(page) {
+    if (!page || page.archived || page.in_trash || page.is_archived) return false;
+    const properties = page.properties ?? {};
+    const status = properties[PROPERTY_NAMES.processingStatus];
+    if (status && ((status.type && status.type !== "select") || status.select != null)) return false;
+    for (const name of [PROPERTY_NAMES.aiTitle, PROPERTY_NAMES.aiSummary,
+      PROPERTY_NAMES.provisionalTopics, PROPERTY_NAMES.aiKeywords, PROPERTY_NAMES.aiTopics]) {
+      const property = properties[name];
+      if (!property) continue;
+      const type = EXPECTED_TYPES[name];
+      if (property.type && property.type !== type) return false;
+      if (!Array.isArray(property[type]) || property[type].length > 0) return false;
+    }
+    return true;
+  }
+
+  function unanalyzedQueryPayload(properties = {}, startCursor = "", pageSize = 10) {
+    const filters = [{ property: PROPERTY_NAMES.processingStatus, select: { is_empty: true } }];
+    for (const name of [PROPERTY_NAMES.aiTitle, PROPERTY_NAMES.aiSummary,
+      PROPERTY_NAMES.provisionalTopics, PROPERTY_NAMES.aiKeywords, PROPERTY_NAMES.aiTopics]) {
+      if (properties[name]) filters.push({ property: name, [EXPECTED_TYPES[name]]: { is_empty: true } });
+    }
+    const payload = {
+      page_size: Math.max(1, Math.min(50, Math.floor(Number(pageSize) || 10))),
+      filter: { and: filters },
+      sorts: [{ timestamp: "created_time", direction: "descending" }]
+    };
+    if (startCursor) payload.start_cursor = startCursor;
+    return payload;
+  }
+
   /**
    * Page PATCH that always replaces confirmed AI 主題 from `topics` and
    * writes 整理狀態. AI 暫定主題 is replaced only when provisionalTopics is an
@@ -628,6 +662,8 @@
     blockToRecord,
     buildArticleText,
     isCaptureMetadataLine,
+    isUnanalyzedArticle,
+    unanalyzedQueryPayload,
     pageSummary,
     pagePropertyValues,
     propertyType,

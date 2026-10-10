@@ -190,7 +190,7 @@
    * not send HTTP or write Notion.
    */
   function buildAnalysisRequest(userPrompt, model = DEFAULT_MODEL, options = {}) {
-    return generationPayload(prompt.buildSystemPrompt(options.customPrompt, options.outputSpec), userPrompt, analysisJsonSchema(options.outputSpec), {
+    return generationPayload(prompt.buildSystemPrompt(options.customPrompt, options.outputSpec, options.summaryInstructions), userPrompt, analysisJsonSchema(options.outputSpec), {
       maxOutputTokens: MAX_OUTPUT_TOKENS,
       model
     });
@@ -204,7 +204,7 @@
    */
   function buildRepairRequest(invalidOutput, errors, model = DEFAULT_MODEL, options = {}) {
     return generationPayload(
-      prompt.buildSystemPrompt(options.customPrompt, options.outputSpec),
+      prompt.buildSystemPrompt(options.customPrompt, options.outputSpec, options.summaryInstructions),
       prompt.buildRepairPrompt(invalidOutput, errors),
       analysisJsonSchema(options.outputSpec),
       { maxOutputTokens: 4096, model }

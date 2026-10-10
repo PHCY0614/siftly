@@ -13,6 +13,7 @@ async function handleMessage(message) {
     case "LIST_NOTION_DATA_SOURCES":
       return listNotionDataSources(message.notionToken);
     case "SAVE_SETTINGS":
+      if (message.summaryOnly === true) return saveSummaryInstructions(message.settings?.summaryInstructions);
       return saveSettings(message.settings ?? {});
     case "TEST_CONNECTIONS":
       return testConnections();
@@ -33,6 +34,10 @@ async function handleMessage(message) {
     case "SCAN_PENDING":
       await scanPending();
       return publicStatus();
+    case "LIST_UNANALYZED_ARTICLES":
+      return listUnanalyzedArticles(message);
+    case "SET_ARTICLE_ANALYSIS_STATUS":
+      return setArticleAnalysisStatus(message.dataSourceId, message.pageIds, message.status);
     case "ANALYZE_ALL":
       return queueAll();
     case "STOP_ANALYSIS":

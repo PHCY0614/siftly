@@ -197,6 +197,7 @@ async function analyzeArticle(articleText, config, signal) {
   const excludedPersonTerms = normalizeExcludedPersonTerms(config.excludedPersonTerms);
   const analysisOptions = {
     customPrompt: "",
+    summaryInstructions: P.normalizeSummaryInstructions(config.summaryInstructions),
     outputSpec: P.normalizeOutputSpec(config.outputSpec),
     requestTimeoutMinutes: Number(config.requestTimeoutMinutes) || 0
   };

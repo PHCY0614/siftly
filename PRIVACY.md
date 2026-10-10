@@ -1,6 +1,6 @@
 # Privacy and data flow
 
-Last updated: September 21, 2026
+Last updated: October 10, 2026
 
 Developed and maintained by Penny Hsieh.
 
@@ -22,6 +22,7 @@ This extension must be used with the Notion web app in Google Chrome. It uses th
 - The data-source schema, to check required fields and to list existing confirmed AI topics (`AI 主題`) options.
 - When you click `載入可用資料庫` (“Load available databases”) in the options page, the extension uses the Notion Search API to read each authorised data source’s name, ID, parent database ID, and character emoji to build the picker. It does not retain the complete schema, description, cover, user data, or external image URLs from those results.
 - During batch topic organising, the extension queries matching pages until it has at most 75 distinct provisional topics (`AI 暫定主題`), or there are no more matching pages. The organiser query asks Notion to return only the `整理狀態`, `AI 暫定主題`, and `AI 主題` database properties; Page ID is used only to write back to the correct page.
+- When you use `準備待分析文章`, the extension queries articles with empty organisation status and AI analysis properties, then reads each article's first 10 top-level blocks to produce a preview of up to 300 characters. The list and previews stay in the settings page, are not written to Chrome storage, and are not sent to an AI provider. Choosing `加入待分析` or `標記不分析` updates only the selected articles' organisation status in Notion and may add missing analysis properties and status options.
 - When the popup opens or you use 「分析目前頁面」, the Chrome-side tab access reads only the current tab’s Notion URL to identify the Page ID; it does not read other tabs or browsing history. It may then inspect that page and its data-source schema through the Notion API.
 
 Images, video, audio, files, and PDFs are not used as analysis input and are not sent to the AI provider.
@@ -36,6 +37,7 @@ Chrome permissions are `storage`, `alarms`, and `activeTab`. Host permissions ar
    - Notion page plain text
    - the built-in analysis prompt
    - the output spec
+   - your applied custom summary instructions, if any
    - the excluded-person terms list
 
    Providers you did not select do not receive the article. Listing models and testing the connection send the key to the currently selected provider. The Vertex test also sends the fixed string `連線測試` and does not include a Notion page.
@@ -53,7 +55,7 @@ Under Google’s Gemini API Additional Terms of Service, content and responses s
 
 Chrome extension storage holds:
 
-- General settings: Notion target ID, AI provider and model names, keyword-exclusion terms, analysis prompt and output spec, global and per-page topic mappings, and whether to remember keys.
+- General settings: Notion target ID, AI provider and model names, keyword-exclusion terms, custom summary instructions and output spec, global and per-page topic mappings, and whether to remember keys. Summary instructions are saved when applied and cleared when defaults are restored. The complete built-in analysis prompt is not editable; legacy saved full custom prompts are still cleared.
 - Run state: latest scanned pending page IDs, the local batch queue, recent results, errors, and pause state. After a successful rescan, the queue is cleared or synced to Notion’s current `待分析` set so stale items are not kept as work.
 - Topic dictionary and organiser session: standard topics, definitions, aliases, colours, enabled flags, permanently discarded provisional topic names, the current suggestion batch, unclassified / temporarily skipped items, and the last apply snapshot used for rollback. Dictionary export does not include keys, tokens, or article text.
 - Failure diagnostics: only on AI output failure, provider, model name, stop reason, numeric token usage, safety categories, output character count, and validation error count. The diagnostic field does not persist raw AI responses or validation-error text; a separate short user-facing failure message is retained for retry and troubleshooting.

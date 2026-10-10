@@ -80,6 +80,7 @@ const DEFAULT_CONFIG = Object.freeze({
   rememberVertexKey: false,
   rememberNotionToken: false,
   requestTimeoutMinutes: 5,
+  summaryInstructions: "",
   outputSpec: P.DEFAULT_OUTPUT_SPEC,
   preferExistingTopicsByDataSource: {},
   topicAliases: {},

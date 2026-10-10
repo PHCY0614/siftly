@@ -251,6 +251,7 @@ async function readConfig() {
   delete merged.openRouterPaidConfirmedModel;
   delete merged.rememberOpenRouterKey;
   merged.outputSpec = P.normalizeOutputSpec(merged.outputSpec);
+  merged.summaryInstructions = P.normalizeSummaryInstructions(merged.summaryInstructions);
   merged.discardedTopicNames = normalizeDiscardedTopicNames(merged.discardedTopicNames);
   merged.topicDictionary = normalizeTopicDictionary(merged.topicDictionary);
   merged.topicPageResolutions = normalizeTopicPageResolutions(merged.topicPageResolutions);

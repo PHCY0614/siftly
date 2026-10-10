@@ -367,7 +367,27 @@ function resolvePromptSettings(settings, current) {
   }
   const timeoutValue = Number(settings.requestTimeoutMinutes ?? current.requestTimeoutMinutes);
   const requestTimeoutMinutes = [0, 3, 5, 10].includes(timeoutValue) ? timeoutValue : 5;
-  return { analysisPrompt: "", analysisPromptCustomized: false, outputSpec, requestTimeoutMinutes };
+  const summaryInstructions = settings.summaryInstructions === undefined
+    ? P.normalizeSummaryInstructions(current.summaryInstructions)
+    : validateSummaryInstructions(settings.summaryInstructions);
+  return { analysisPrompt: "", analysisPromptCustomized: false, outputSpec, requestTimeoutMinutes, summaryInstructions };
+}
+
+function validateSummaryInstructions(value) {
+  if (typeof value !== "string" || value.length > P.MAX_SUMMARY_INSTRUCTION_CHARACTERS) {
+    throw new AppError(`摘要指引須為文字，最多 ${P.MAX_SUMMARY_INSTRUCTION_CHARACTERS} 個字元`, {
+      code: "SUMMARY_INSTRUCTIONS_INVALID"
+    });
+  }
+  return P.normalizeSummaryInstructions(value);
+}
+
+// Save only summary preferences; leave secrets, database selection, and queue untouched.
+async function saveSummaryInstructions(value) {
+  const summaryInstructions = validateSummaryInstructions(value);
+  const current = await readConfig();
+  await writeConfig({ ...current, summaryInstructions });
+  return { summaryInstructions };
 }
 
 function notionTargetChanged(current, nextTargetId) {
@@ -441,6 +461,7 @@ function buildNextConfig(settings, current, resolved) {
       : Boolean(current.rememberNotionToken),
     requestTimeoutMinutes: promptSettings.requestTimeoutMinutes,
     outputSpec: promptSettings.outputSpec,
+    summaryInstructions: promptSettings.summaryInstructions,
     preferExistingTopicsByDataSource,
     topicAliases: targetChanged ? {} : normalizeTopicAliases(current.topicAliases),
     topicPageResolutions: targetChanged ? {} : normalizeTopicPageResolutions(current.topicPageResolutions),
@@ -521,6 +542,7 @@ function buildSaveResponse(next, resolved) {
  * readyNotion. Response includes has*Key booleans, not secret values.
  */
 async function saveSettings(settings) {
+  assertArticleSelectionIdle();
   const current = await readConfig();
   const notionTarget = resolveNotionTarget(settings, current);
   const provider = resolveProviderSelection(settings, current);
@@ -534,6 +556,7 @@ async function saveSettings(settings) {
     nextTargetId
   );
   assertDatabaseChangeAllowed(targetChanged);
+  assertArticleSelectionIdle();
   const next = buildNextConfig(settings, current, {
     notionTarget,
     preferExistingTopicsByDataSource,

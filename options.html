@@ -66,6 +66,38 @@
         </div>
         <p id="database-change-warning" class="database-change-warning" role="note" hidden>儲存後將切換作用中的資料庫，並清除目前資料庫的本機執行清單、近期結果與主題整理狀態；Notion 中既有內容不會被刪除。</p>
 
+        <details id="article-preparation" class="article-preparation">
+          <summary>準備待分析文章</summary>
+          <div class="article-preparation__body">
+            <p class="hint">從目前已保存的 Notion 資料庫選取尚未整理的文章。未選取的文章會保持原樣，不會自動開始分析。</p>
+            <div class="article-preparation__toolbar">
+              <label for="article-page-size">每次載入</label>
+              <select id="article-page-size">
+                <option value="10" selected>10 篇</option>
+                <option value="50">50 篇</option>
+              </select>
+              <button id="load-article-candidates" class="button secondary compact" type="button">載入文章</button>
+              <button id="load-more-article-candidates" class="button secondary compact" type="button" hidden>載入更多</button>
+            </div>
+            <p id="article-preparation-summary" class="hint" role="status" aria-live="polite">開啟後會載入最近 10 篇尚未整理的文章。</p>
+            <p class="hint">預覽只取前 10 個頂層區塊，可能不含巢狀內容。</p>
+            <div id="article-selection-toolbar" class="article-selection-toolbar" hidden>
+              <label class="check-row">
+                <input id="select-all-articles" type="checkbox">
+                <span>全選已載入</span>
+              </label>
+              <button id="clear-article-selection" class="button secondary compact" type="button">取消全選</button>
+              <span id="article-selected-count" class="article-selected-count" role="status" aria-live="polite">已選 0 篇</span>
+            </div>
+            <div id="article-candidate-list" class="article-candidate-list" aria-live="polite"></div>
+            <div class="inline-actions article-preparation__actions">
+              <button id="add-articles-to-analysis" class="button primary compact" type="button" disabled>加入待分析</button>
+              <button id="mark-articles-no-analysis" class="button secondary compact" type="button" disabled>標記不分析</button>
+            </div>
+            <p id="article-preparation-status" class="hint" role="status" aria-live="polite"></p>
+          </div>
+        </details>
+
         <details class="notion-advanced">
           <summary>進階設定：手動輸入資料庫網址或 ID</summary>
           <label for="notion-target">Notion 資料庫網址或 Data Source ID</label>
@@ -191,6 +223,15 @@
           <label>摘要最多（最高 800）<input id="summary-max" type="number" min="100" max="800" value="250"></label>
         </div>
         <button id="reset-output-spec" class="button secondary compact" type="button">恢復預設規格</button>
+        <label for="summary-instructions">自訂摘要指引</label>
+        <p id="summary-instructions-help" class="hint">描述你希望摘要採用的語氣、用詞表達方式與關注重點。留白時使用預設方式整理。</p>
+        <textarea id="summary-instructions" rows="5" maxlength="2000" spellcheck="false" aria-describedby="summary-instructions-help summary-instructions-status" placeholder="例如：使用自然輕鬆的語氣，減少術語，優先保留實際用途、操作方法與限制。" disabled></textarea>
+        <div class="inline-actions">
+          <button id="apply-summary-instructions" class="button primary compact" type="button" disabled>套用</button>
+          <button id="reset-summary-instructions" class="button secondary compact" type="button" disabled>恢復預設</button>
+        </div>
+        <p id="summary-instructions-status" class="hint" role="status" aria-live="polite">正在載入摘要指引…</p>
+        <p class="hint">套用與恢復預設只會保存摘要指引。摘要長度依上方字數設定，既有摘要會保留。</p>
         <label for="request-timeout">單次 AI 等待上限</label>
         <select id="request-timeout">
           <option value="3">3 分鐘</option>

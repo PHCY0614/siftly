@@ -42,7 +42,7 @@ The extension reads plain text from pages in a selected Notion database, sends i
 
 ## Workflow
 
-1. Mark the Notion pages you want to process as `待分析` (Pending Analysis).
+1. Use `準備待分析文章` (“Prepare articles for analysis”) in settings to select a batch, or mark pages as `待分析` (Pending Analysis) in Notion.
 2. Analyse the current page, or scan the database and start a batch.
 3. Write the generated title, summary, keywords, and provisional topics back to Notion.
 4. Scan the accumulated provisional topics and generate organisation suggestions.
@@ -69,6 +69,10 @@ Versions installed manually from GitHub do not update automatically. After downl
 ## Features
 
 ### Analyse the Current Page or Run a Batch
+
+For a first batch, use `準備待分析文章` in settings to load the most recently created articles whose organisation status and all AI analysis properties are empty. The first 10 articles are loaded and selected by default. You can load 50 at a time, load more, or select all loaded articles, up to 2,000 in one list. The loaded count is not the total number of articles in the database.
+
+Review titles and short previews, then choose `加入待分析` (“Add to pending analysis”) or `標記不分析` (“Mark as do not analyse”). These actions only change the selected articles' organisation status and do not call AI; unselected articles are left unchanged. Existing analysis content and non-empty statuses are protected. Failed updates can be retried separately. Previews read only the first 10 top-level blocks and may omit nested content; open the Notion page if a preview is unavailable. To process an article marked `不分析` later, change its status to `待分析` in Notion.
 
 On an individual Notion page, you can analyse the page currently open in the browser. On a database page, you can scan pages marked `待分析` and process them as a batch.
 
@@ -154,7 +158,9 @@ These settings are applied to the AI prompt, output format, and result validatio
 
 For safety and predictable resource use, article plain text is limited to 120,000 characters. Near that limit, the extension asks the selected Google service to count the complete prompt and rejects requests above 350,000 input tokens. Generated responses are capped at 8,192 tokens.
 
-The settings page does not display or edit the analysis prompt. It only exposes the output specification and the maximum wait time for a single AI request. Use “Restore Default Specification” to return to this version’s default output settings.
+Use “Custom Summary Instructions” to describe the summary's tone, wording, expression, and focus, then select “Apply” to save. The text box displays only your own instructions. “Restore Defaults” clears the saved instructions so subsequent analyses use the default summary style. These buttons save only summary instructions and do not rewrite existing summaries. Instructions are sent to your selected AI provider; do not include credentials or private information.
+
+The settings page does not display or edit the complete analysis prompt. Custom instructions apply only to summaries; built-in language rules, data formats, and other analysis fields remain controlled by the extension. Summary length still follows the output specification. Use “Restore Default Specification” to restore this version's default lengths and counts.
 
 ### AI Request Timeout
 

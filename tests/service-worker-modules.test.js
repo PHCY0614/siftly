@@ -43,6 +43,7 @@ function testImportMap() {
     "background/settings.js",
     "background/analysis.js",
     "background/queue.js",
+    "background/article-selection.js",
     "background/topic-organizer.js",
     "background/topic-review.js",
     "background/messages.js"
@@ -68,6 +69,8 @@ function testCriticalWiring() {
     "GET_STATUS",
     "GET_CONFIG",
     "LIST_NOTION_DATA_SOURCES",
+    "LIST_UNANALYZED_ARTICLES",
+    "SET_ARTICLE_ANALYSIS_STATUS",
     "SAVE_SETTINGS",
     "TEST_CONNECTIONS",
     "PREPARE_NOTION_STATUS_FIELD",

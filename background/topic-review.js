@@ -289,12 +289,14 @@ async function reviewCurrentPageTopics(pageId) {
  * here: processItem does that when the item actually runs.
  */
 async function reanalyzePage(pageId, force = false) {
+  assertArticleSelectionIdle();
   ensureNoTopicReview();
   assertProviderReady(await readConfig());
   if (stateCache.running) throw new AppError("目前正在分析其他文章，請先停止或等候完成", { code: "BUSY" });
   const id = S.extractNotionId(pageId);
   if (!id) throw new AppError("頁面 ID 格式不正確", { code: "PAGE_ID_INVALID" });
   const inspection = await inspectPage(id);
+  assertArticleSelectionIdle();
   if (inspection.analyzed && !force) {
     throw new AppError("這個頁面已有分析內容，重新分析會覆寫 AI 欄位", { code: "PAGE_OVERWRITE_CONFIRM_REQUIRED" });
   }

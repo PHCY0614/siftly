@@ -11,6 +11,19 @@ const notionDataSourcePicker = document.querySelector("#notion-data-source-picke
 const notionDataSourceStatus = document.querySelector("#notion-data-source-status");
 const loadNotionDataSourcesButton = document.querySelector("#load-notion-data-sources");
 const databaseChangeWarning = document.querySelector("#database-change-warning");
+const articlePreparation = document.querySelector("#article-preparation");
+const articlePageSize = document.querySelector("#article-page-size");
+const loadArticleCandidatesButton = document.querySelector("#load-article-candidates");
+const loadMoreArticleCandidatesButton = document.querySelector("#load-more-article-candidates");
+const articlePreparationSummary = document.querySelector("#article-preparation-summary");
+const articleSelectionToolbar = document.querySelector("#article-selection-toolbar");
+const selectAllArticles = document.querySelector("#select-all-articles");
+const clearArticleSelectionButton = document.querySelector("#clear-article-selection");
+const articleSelectedCount = document.querySelector("#article-selected-count");
+const articleCandidateList = document.querySelector("#article-candidate-list");
+const addArticlesToAnalysisButton = document.querySelector("#add-articles-to-analysis");
+const markArticlesNoAnalysisButton = document.querySelector("#mark-articles-no-analysis");
+const articlePreparationStatus = document.querySelector("#article-preparation-status");
 const rememberNotionToken = document.querySelector("#remember-notion-token");
 const aiProvider = document.querySelector("#ai-provider");
 const geminiKey = document.querySelector("#gemini-key");
@@ -29,6 +42,10 @@ const keywordCount = document.querySelector("#keyword-count");
 const summaryMin = document.querySelector("#summary-min");
 const summaryMax = document.querySelector("#summary-max");
 const outputSpecSummary = document.querySelector("#output-spec-summary");
+const summaryInstructions = document.querySelector("#summary-instructions");
+const summaryInstructionsStatus = document.querySelector("#summary-instructions-status");
+const applySummaryInstructionsButton = document.querySelector("#apply-summary-instructions");
+const resetSummaryInstructionsButton = document.querySelector("#reset-summary-instructions");
 const requestTimeout = document.querySelector("#request-timeout");
 const preferExistingTopics = document.querySelector("#prefer-existing-topics");
 const organizerSummary = document.querySelector("#organizer-summary");
@@ -69,9 +86,23 @@ let manualCandidateName = "";
 let topicOrganizerPreferences = {};
 let savedNotionTarget = "";
 let savedDataSourceId = "";
+let savedSummaryInstructions = "";
+let summaryInstructionsLoaded = false;
+let summaryInstructionsBusy = false;
+let settingsBusy = false;
 let notionDataSourcesLoaded = false;
 let notionDataSourcesLoading = false;
-const NO_PENDING_MESSAGE = "目前沒有待分析文章。請先在 Notion 將要處理文章的「整理狀態」設為「待分析」。";
+let articlePages = [];
+let articleSelectedIds = new Set();
+let articleNextCursor = "";
+let articleHasMore = false;
+let articleListLoaded = false;
+let articleListBusy = false;
+let articleActionBusy = false;
+let articleDataSourceId = "";
+let articlePreparationGeneration = 0;
+const MAX_ARTICLE_CANDIDATES = 2000;
+const NO_PENDING_MESSAGE = "目前沒有待分析文章。可以在下方「準備待分析文章」選取文章加入待分析。";
 const DEFAULT_MODEL = "gemini-3.5-flash-lite";
 
 // ==== Shared custom select ====
@@ -201,6 +232,273 @@ async function testConnectionsWithStatusPreparation() {
   }
 }
 
+// ==== First-use article preparation ====
+function articleSavedDataSourceId() {
+  return savedDataSourceId || compactTargetId(savedNotionTarget);
+}
+
+function articleTargetIsSaved() {
+  const current = compactTargetId(notionTarget.value);
+  return Boolean(current && savedTargetIds().includes(current));
+}
+
+function setArticlePreparationStatus(message, kind = "") {
+  articlePreparationStatus.textContent = message;
+  articlePreparationStatus.className = `hint article-preparation-status${kind ? ` ${kind}` : ""}`;
+}
+
+function renderArticleCandidates() {
+  articleCandidateList.replaceChildren(...articlePages.map(page => {
+    const row = document.createElement("article");
+    row.className = "article-candidate";
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = articleSelectedIds.has(page.id);
+    checkbox.disabled = settingsBusy || articleListBusy || articleActionBusy;
+    checkbox.setAttribute("aria-label", `選取文章：${page.title || "未命名文章"}`);
+    checkbox.addEventListener("change", () => {
+      if (checkbox.checked) articleSelectedIds.add(page.id);
+      else articleSelectedIds.delete(page.id);
+      updateArticlePreparationUi();
+    });
+
+    const content = document.createElement("div");
+    content.className = "article-candidate__content";
+    const title = document.createElement("div");
+    title.className = "article-candidate__title";
+    const safeUrl = safeNotionUrl(page.url);
+    if (safeUrl) {
+      const link = document.createElement("a");
+      link.href = safeUrl;
+      link.target = "_blank";
+      link.rel = "noreferrer";
+      link.textContent = page.title || "未命名文章";
+      title.append(link);
+    } else {
+      title.textContent = page.title || "未命名文章";
+    }
+    const preview = document.createElement("p");
+    preview.className = "article-candidate__preview";
+    preview.textContent = page.previewUnavailable
+      ? "預覽目前無法載入"
+      : (page.preview || "目前沒有預覽文字");
+    content.append(title, preview);
+    row.append(checkbox, content);
+    return row;
+  }));
+
+  articleSelectionToolbar.hidden = articlePages.length === 0;
+  articleCandidateList.classList.toggle("article-candidate-list--empty", articlePages.length === 0);
+  loadMoreArticleCandidatesButton.hidden = !articleHasMore;
+  updateArticlePreparationUi();
+}
+
+function safeNotionUrl(value) {
+  if (!value) return "";
+  try {
+    const url = new URL(value);
+    const host = url.hostname.toLowerCase();
+    const allowedHost = host === "notion.so"
+      || host.endsWith(".notion.so")
+      || host === "notion.site"
+      || host.endsWith(".notion.site");
+    return url.protocol === "https:" && allowedHost ? url.href : "";
+  } catch {
+    return "";
+  }
+}
+
+function updateArticlePreparationUi() {
+  const busy = settingsBusy || articleListBusy || articleActionBusy;
+  const hasSavedTarget = articleTargetIsSaved();
+  const selectedCount = articleSelectedIds.size;
+  articlePageSize.disabled = busy;
+  loadArticleCandidatesButton.disabled = busy || !hasSavedTarget;
+  loadMoreArticleCandidatesButton.disabled = busy || !hasSavedTarget || !articleHasMore;
+  selectAllArticles.disabled = busy || articlePages.length === 0;
+  clearArticleSelectionButton.disabled = busy || selectedCount === 0;
+  addArticlesToAnalysisButton.disabled = busy || selectedCount === 0 || !hasSavedTarget;
+  markArticlesNoAnalysisButton.disabled = busy || selectedCount === 0 || !hasSavedTarget;
+  articleSelectedCount.textContent = `已選 ${selectedCount} 篇`;
+  const loadedCount = articlePages.length;
+  selectAllArticles.checked = loadedCount > 0 && selectedCount === loadedCount;
+  selectAllArticles.indeterminate = selectedCount > 0 && selectedCount < loadedCount;
+
+  if (!hasSavedTarget && articlePreparation.open && !busy) {
+    setArticlePreparationStatus("請先儲存目前選擇的 Notion 資料庫，再載入文章。", "error");
+  }
+}
+
+function clearArticleCandidates(message = "") {
+  articlePreparationGeneration += 1;
+  articlePages = [];
+  articleSelectedIds = new Set();
+  articleNextCursor = "";
+  articleHasMore = false;
+  articleListLoaded = false;
+  articleDataSourceId = "";
+  articlePreparationSummary.textContent = "開啟後會載入最近 10 篇尚未整理的文章。";
+  setArticlePreparationStatus(message);
+  renderArticleCandidates();
+}
+
+function updateArticlePreparationSummary() {
+  articlePreparationSummary.textContent = articlePages.length
+    ? `已載入 ${articlePages.length} 篇尚未整理文章${articlePages.length >= MAX_ARTICLE_CANDIDATES ? "（已達上限）" : ""}。`
+    : "目前找不到尚未整理的文章。";
+}
+
+function normalizeArticlePages(pages) {
+  return (Array.isArray(pages) ? pages : []).filter(page => page && typeof page.id === "string" && page.id.trim());
+}
+
+async function requestArticleCandidates(payload, generation, canPrepare = true) {
+  if (generation !== articlePreparationGeneration) return null;
+  try {
+    return await send("LIST_UNANALYZED_ARTICLES", payload);
+  } catch (error) {
+    if (!canPrepare || generation !== articlePreparationGeneration
+      || !["NOTION_STATUS_FIELD_MISSING", "NOTION_PENDING_OPTION_MISSING"].includes(error.code)) {
+      throw error;
+    }
+    const approved = await confirmNotionStatusPreparation(error.code);
+    if (!approved || generation !== articlePreparationGeneration) throw error;
+    setArticlePreparationStatus("正在準備「整理狀態」，完成後會重新載入文章…");
+    await send("PREPARE_NOTION_STATUS_FIELD");
+    if (generation !== articlePreparationGeneration) return null;
+    return requestArticleCandidates(payload, generation, false);
+  }
+}
+
+async function loadArticleCandidates(reset = false) {
+  if (articleListBusy || articleActionBusy) return;
+  if (!articleTargetIsSaved()) {
+    setArticlePreparationStatus("請先儲存目前選擇的 Notion 資料庫，再載入文章。", "error");
+    return;
+  }
+  if (!reset && !articleHasMore) return;
+  if (reset) clearArticleCandidates("正在載入尚未整理的文章…");
+
+  const generation = articlePreparationGeneration;
+  const pageSize = Number(articlePageSize.value) === 50 ? 50 : 10;
+  const cursor = reset ? "" : articleNextCursor;
+  const payload = { pageSize };
+  if (cursor) {
+    payload.cursor = cursor;
+    payload.dataSourceId = articleDataSourceId || articleSavedDataSourceId();
+  }
+  articleListBusy = true;
+  setBusy(true);
+  if (!reset) setArticlePreparationStatus("正在載入更多尚未整理的文章…");
+  try {
+    const result = await requestArticleCandidates(payload, generation);
+    if (!result || generation !== articlePreparationGeneration || !articleTargetIsSaved()) return;
+    const incoming = normalizeArticlePages(result.pages);
+    const existingIds = new Set(articlePages.map(page => page.id));
+    const added = incoming.filter(page => !existingIds.has(page.id));
+    const wasEmpty = articlePages.length === 0;
+    articlePages.push(...added.slice(0, Math.max(0, MAX_ARTICLE_CANDIDATES - articlePages.length)));
+    if (reset && wasEmpty) {
+      for (const page of articlePages.slice(0, 10)) articleSelectedIds.add(page.id);
+    }
+    articleDataSourceId = result.dataSourceId || articleDataSourceId || articleSavedDataSourceId();
+    articleNextCursor = result.nextCursor || "";
+    articleHasMore = Boolean(result.hasMore) && articlePages.length < MAX_ARTICLE_CANDIDATES;
+    articleListLoaded = true;
+    updateArticlePreparationSummary();
+    setArticlePreparationStatus(articlePages.length ? "請選取要處理的文章。" : "目前沒有可選取的文章。");
+    renderArticleCandidates();
+  } catch (error) {
+    if (generation === articlePreparationGeneration) {
+      setArticlePreparationStatus(error.message, "error");
+    }
+  } finally {
+    articleListBusy = false;
+    setBusy(false);
+    if (generation === articlePreparationGeneration) {
+      renderArticleCandidates();
+    } else {
+      updateArticlePreparationUi();
+    }
+  }
+}
+
+function selectedArticlePages() {
+  return articlePages.filter(page => articleSelectedIds.has(page.id));
+}
+
+async function setSelectedArticleStatus(status) {
+  if (articleListBusy || articleActionBusy) return;
+  if (!articleTargetIsSaved()) {
+    setArticlePreparationStatus("請先儲存目前選擇的 Notion 資料庫，再處理文章。", "error");
+    return;
+  }
+  const selected = selectedArticlePages();
+  if (!selected.length) return;
+  const generation = articlePreparationGeneration;
+  const dataSourceId = articleDataSourceId || articleSavedDataSourceId();
+  if (!dataSourceId) {
+    setArticlePreparationStatus("找不到已保存的資料庫來源，請先儲存設定。", "error");
+    return;
+  }
+  articleActionBusy = true;
+  setBusy(true);
+  let processed = 0;
+  let updated = 0;
+  let skipped = 0;
+  let failed = 0;
+  try {
+    for (let start = 0; start < selected.length; start += 50) {
+      if (generation !== articlePreparationGeneration) return;
+      const chunk = selected.slice(start, start + 50);
+      setArticlePreparationStatus(`正在處理文章 ${Math.min(start + chunk.length, selected.length)}／${selected.length}…`);
+      const result = await send("SET_ARTICLE_ANALYSIS_STATUS", {
+        dataSourceId: articleDataSourceId || dataSourceId,
+        pageIds: chunk.map(page => page.id),
+        status
+      });
+      if (generation !== articlePreparationGeneration || !articleTargetIsSaved()) return;
+      articleDataSourceId = result.dataSourceId || articleDataSourceId || dataSourceId;
+      const updatedIds = Array.isArray(result.updatedIds) ? result.updatedIds : [];
+      const skippedIds = Array.isArray(result.skipped)
+        ? result.skipped.map(item => item?.id).filter(Boolean)
+        : [];
+      updated += updatedIds.length;
+      skipped += skippedIds.length;
+      const removedIds = new Set([...updatedIds, ...skippedIds]);
+      articlePages = articlePages.filter(page => {
+        if (!removedIds.has(page.id)) return true;
+        articleSelectedIds.delete(page.id);
+        return false;
+      });
+      updateArticlePreparationSummary();
+      failed += Array.isArray(result.failed) ? result.failed.length : 0;
+      processed += chunk.length;
+      renderArticleCandidates();
+    }
+    const actionName = status === "待分析" ? "已加入待分析" : "已標記不分析";
+    const resultParts = [`${actionName} ${updated} 篇`];
+    if (skipped) resultParts.push(`略過 ${skipped} 篇`);
+    if (failed) resultParts.push(`失敗 ${failed} 篇`);
+    setArticlePreparationStatus(`${resultParts.join("，")}。${failed ? "失敗項目仍保留勾選，可重試。" : ""}`);
+  } catch (error) {
+    if (generation === articlePreparationGeneration) {
+      setArticlePreparationStatus(processed
+        ? `已處理 ${processed} 篇，後續處理失敗：${error.message}`
+        : error.message, "error");
+    }
+  } finally {
+    articleActionBusy = false;
+    setBusy(false);
+    if (generation === articlePreparationGeneration) {
+      renderArticleCandidates();
+    } else {
+      updateArticlePreparationUi();
+    }
+  }
+}
+
 function closeImportModeMenu() {
   importModeMenu.hidden = true;
   importModeToggle.setAttribute("aria-expanded", "false");
@@ -229,6 +527,7 @@ function settingsFromForm() {
     excludedPersonTerms: excludedPersonTerms.value,
     preferExistingTopics: preferExistingTopics.checked,
     outputSpec,
+    summaryInstructions: savedSummaryInstructions,
     requestTimeoutMinutes: Number(requestTimeout.value),
     notionTarget: notionTarget.value.trim(),
     notionToken: notionToken.value.trim(),
@@ -272,6 +571,7 @@ function updateProviderUi() {
 }
 
 function setBusy(isBusy) {
+  settingsBusy = isBusy;
   for (const button of [
     saveButton,
     testButton,
@@ -279,6 +579,8 @@ function setBusy(isBusy) {
     loadNotionDataSourcesButton,
     clearButton
   ]) button.disabled = isBusy;
+  updateSummaryInstructionsStatus();
+  updateArticlePreparationUi();
 }
 
 function formatTokenLimit(value) {
@@ -452,8 +754,10 @@ async function saveSettings(showConfirmation = true) {
     organizerClearedForPendingDbChange = false;
     organizerData = await send("GET_TOPIC_ORGANIZER");
     renderOrganizer();
+    clearArticleCandidates("資料庫已切換，請重新載入文章清單。");
   } else {
     organizerClearedForPendingDbChange = false;
+    updateArticlePreparationUi();
   }
   if (showConfirmation) {
     const queueNotice = config.databaseChanged
@@ -493,6 +797,10 @@ async function loadConfig() {
     summaryMin.value = spec.summaryMin;
     summaryMax.value = spec.summaryMax;
     updateOutputSpecSummary();
+    savedSummaryInstructions = config.summaryInstructions || "";
+    summaryInstructions.value = savedSummaryInstructions;
+    summaryInstructionsLoaded = true;
+    updateSummaryInstructionsStatus();
     requestTimeout.value = String(config.requestTimeoutMinutes ?? 5);
     topicOrganizerPreferences = config.preferExistingTopicsByDataSource ?? {};
     preferExistingTopics.checked = Boolean(config.preferExistingTopics);
@@ -502,12 +810,14 @@ async function loadConfig() {
     updateProviderUi();
     syncEnhancedSelects();
     updateDatabaseChangeWarning();
+    updateArticlePreparationUi();
     customPromptClearedNotice.hidden = !config.customPromptCleared;
     if (config.providerReselectionRequired) {
       showStatus("舊版 AI 服務已移除。請選擇 Google AI Studio 或 Vertex AI，填入金鑰後儲存設定。", "info");
     }
     organizerData = await send("GET_TOPIC_ORGANIZER");
     renderOrganizer();
+    if (articlePreparation.open && articleTargetIsSaved()) void loadArticleCandidates(true);
   } catch (error) {
     showStatus(error.message, "error");
   }
@@ -558,6 +868,7 @@ async function refreshOrganizerAfterTargetChange() {
 }
 
 notionTarget.addEventListener("input", () => {
+  clearArticleCandidates("資料庫選擇已變更，請先儲存設定後再載入文章。");
   const key = compactTargetId(notionTarget.value);
   preferExistingTopics.checked = Boolean(key && topicOrganizerPreferences[key]);
   const matchingOption = [...notionDataSourceSelect.options]
@@ -572,6 +883,49 @@ notionDataSourceSelect.addEventListener("change", () => {
   if (!notionDataSourceSelect.value) return;
   notionTarget.value = notionDataSourceSelect.value;
   notionTarget.dispatchEvent(new Event("input", { bubbles: true }));
+});
+
+articlePreparation.addEventListener("toggle", () => {
+  if (articlePreparation.open && !articleListLoaded && !articleListBusy) {
+    void loadArticleCandidates(true);
+  }
+});
+
+loadArticleCandidatesButton.addEventListener("click", () => {
+  void loadArticleCandidates(true);
+});
+
+loadMoreArticleCandidatesButton.addEventListener("click", () => {
+  void loadArticleCandidates(false);
+});
+
+articlePageSize.addEventListener("change", () => {
+  if (!articlePreparation.open || !articleTargetIsSaved()) return;
+  void loadArticleCandidates(true);
+});
+
+selectAllArticles.addEventListener("change", () => {
+  if (selectAllArticles.checked) {
+    for (const page of articlePages) articleSelectedIds.add(page.id);
+  } else {
+    articleSelectedIds = new Set();
+  }
+  updateArticlePreparationUi();
+  renderArticleCandidates();
+});
+
+clearArticleSelectionButton.addEventListener("click", () => {
+  articleSelectedIds = new Set();
+  updateArticlePreparationUi();
+  renderArticleCandidates();
+});
+
+addArticlesToAnalysisButton.addEventListener("click", () => {
+  void setSelectedArticleStatus("待分析");
+});
+
+markArticlesNoAnalysisButton.addEventListener("click", () => {
+  void setSelectedArticleStatus("不分析");
 });
 
 loadNotionDataSourcesButton.addEventListener("click", async () => {
@@ -721,6 +1075,49 @@ document.querySelector("#reset-output-spec").addEventListener("click", () => {
   updateOutputSpecSummary();
   showStatus("輸出規格已恢復預設值；儲存後生效。", "info");
 });
+// ==== Summary writing preferences ====
+function updateSummaryInstructionsStatus() {
+  const busy = settingsBusy || summaryInstructionsBusy || !summaryInstructionsLoaded;
+  const draft = summaryInstructions.value.trim();
+  summaryInstructions.disabled = busy;
+  applySummaryInstructionsButton.disabled = busy || draft === savedSummaryInstructions;
+  resetSummaryInstructionsButton.disabled = busy || (!draft && !savedSummaryInstructions);
+  if (!summaryInstructionsLoaded) return;
+  if (summaryInstructionsBusy) {
+    summaryInstructionsStatus.textContent = "正在保存摘要指引…";
+  } else if (draft !== savedSummaryInstructions) {
+    summaryInstructionsStatus.textContent = "摘要指引尚未套用。";
+  } else {
+    summaryInstructionsStatus.textContent = savedSummaryInstructions
+      ? "已套用自訂摘要指引；後續分析時使用。"
+      : "目前使用預設摘要方式。";
+  }
+}
+
+async function persistSummaryInstructions(value, reset = false) {
+  if (!summaryInstructionsLoaded || settingsBusy || summaryInstructionsBusy) return;
+  summaryInstructionsBusy = true;
+  setBusy(true);
+  try {
+    const config = await send("SAVE_SETTINGS", {
+      summaryOnly: true,
+      settings: { summaryInstructions: value }
+    });
+    savedSummaryInstructions = config.summaryInstructions;
+    summaryInstructions.value = savedSummaryInstructions;
+    showStatus(reset ? "已恢復預設摘要方式。" : "已套用摘要指引。", "success");
+  } catch (error) {
+    showStatus(error.message, "error");
+  } finally {
+    summaryInstructionsBusy = false;
+    setBusy(false);
+  }
+}
+
+summaryInstructions.addEventListener("input", updateSummaryInstructionsStatus);
+applySummaryInstructionsButton.addEventListener("click", () => persistSummaryInstructions(summaryInstructions.value));
+resetSummaryInstructionsButton.addEventListener("click", () => persistSummaryInstructions("", true));
+
 // ==== Topic organizer rendering ====
 /**
  * Unclassified AI 暫定主題 pills. Clicking one sets manualCandidateName and

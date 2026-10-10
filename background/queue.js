@@ -16,6 +16,7 @@
  * by a 90s cancellation timeout.
  */
 async function scanPending() {
+  assertArticleSelectionIdle();
   if (stateCache.mode === "batch" && !stateCache.paused
     && Boolean(stateCache.running || stateCache.current || stateCache.queue.length)) {
     throw new AppError("批次分析正在執行中。請先按「停止分析」，再重新掃描資料庫。", {
@@ -65,6 +66,7 @@ async function scanPending() {
     await persistState();
     throw error;
   });
+  assertArticleSelectionIdle();
   const localFailures = new Map(stateCache.failed.map(item => [item.id, item]));
   stateCache.failed = remoteFailed.map(item => {
     const local = localFailures.get(item.id);
@@ -473,6 +475,7 @@ async function processOne() {
  * no pages exist, returns idle and paused with the no-pending result.
  */
 async function queueAll() {
+  assertArticleSelectionIdle();
   ensureNoTopicReview();
   const config = await readConfig();
   assertProviderReady(config);
@@ -484,6 +487,7 @@ async function queueAll() {
     && Array.isArray(cached?.pages);
   if (cacheFresh) await readyNotion();
   const pages = cacheFresh ? cached.pages : await scanPending();
+  assertArticleSelectionIdle();
   stateCache.pendingScan = null;
   stateCache.queue = uniqueItems(pages);
   stateCache.knownPending = pages.length;
@@ -537,8 +541,10 @@ async function stopAnalysis() {
  * still has items. Does not call AI or Notion.
  */
 async function resumeAnalysis() {
+  assertArticleSelectionIdle();
   ensureNoTopicReview();
   assertProviderReady(await readConfig());
+  assertArticleSelectionIdle();
   stateCache.paused = false;
   stateCache.stopRequested = false;
   stateCache.mode = "batch";
@@ -555,12 +561,14 @@ async function resumeAnalysis() {
  * local failed list once those items are queued.
  */
 async function retryFailed() {
+  assertArticleSelectionIdle();
   ensureNoTopicReview();
   assertProviderReady(await readConfig());
   const { config, token } = await readyNotion();
   const remoteFailed = await queryPagesByStatus(config.dataSourceId, N.STATUS.failed, token, {
     maxPages: MAX_FAILED_PAGES_TO_LOAD
   });
+  assertArticleSelectionIdle();
   const retryItems = uniqueItems([...remoteFailed, ...stateCache.failed]);
   if (!retryItems.length) {
     stateCache.lastError = "Notion 中目前沒有「分析失敗」的文章可重試。";
