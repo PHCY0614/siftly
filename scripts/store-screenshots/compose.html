@@ -1,0 +1,146 @@
+<!doctype html>
+<!--
+  One store screenshot, 1280x800: a headline plus the real popup or settings page in an iframe (or, for
+  "results", a drawn table standing in for the Notion database). index.js opens it as
+  compose.html?lang=zh|en&scene=results|popup|review|organizer|setup. Headlines and the demo table live here;
+  the demo data inside the popup and settings page lives in mock.js.
+-->
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  :root { --ink: #17211b; --muted: #626d66; --paper: #fbfaf6; --line: #dce3dc; --green: #176b45; --green-dark: #0e5134; --green-soft: #e8f4ed; }
+  html, body { margin: 0; width: 1280px; height: 800px; overflow: hidden; color: var(--ink);
+    background: radial-gradient(circle at 8% 6%, rgba(31, 124, 80, .12), transparent 30rem), var(--paper);
+    font-family: "Segoe UI", "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif; }
+  .brand { display: flex; align-items: center; gap: 12px; font-weight: 700; font-size: 24px; color: var(--green); margin: 0 0 26px; }
+  .brand img { width: 40px; height: 40px; border-radius: 10px; }
+  h1 { font-size: 52px; line-height: 1.2; color: var(--green-dark); margin: 0 0 24px; letter-spacing: .01em; }
+  .sub { font-size: 24px; line-height: 1.5; color: var(--muted); margin: 0; }
+  /* Side layout (popup scenes): headline left, narrow card right. */
+  .side .copy { position: absolute; left: 90px; top: 50%; width: 560px; transform: translateY(-50%); }
+  .side .card { position: absolute; right: 110px; }
+  /* Top layout (wide pages): one-line headline, the card bleeds off the bottom edge. */
+  .top .copy { position: absolute; left: 0; right: 0; top: 46px; text-align: center; }
+  .top .brand { display: none; }
+  .top h1 { font-size: 42px; margin-bottom: 12px; }
+  .top .sub { font-size: 21px; }
+  .top .card { position: absolute; left: 50%; top: 204px; transform: translateX(-50%); }
+  .card { background: #fff; border: 1px solid var(--line); border-radius: 18px; overflow: hidden;
+    box-shadow: 0 24px 60px rgba(23, 33, 27, .16), 0 4px 14px rgba(23, 33, 27, .08); }
+  iframe { border: 0; display: block; transform-origin: 0 0; }
+  /* The drawn database table. */
+  table { border-collapse: collapse; width: 100%; font-size: 15px; table-layout: fixed; }
+  th { text-align: left; font-weight: 600; color: #8a928c; padding: 12px 14px; border-bottom: 1px solid var(--line); font-size: 13.5px; }
+  td { padding: 14px; border-bottom: 1px solid #edf0ec; vertical-align: top; line-height: 1.5; color: #2b3630; }
+  td.name { font-weight: 600; color: var(--ink); }
+  /* Pasted social posts have no real title; three lines show how unreadable the name column gets. */
+  td.name div { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .chip { display: inline-block; padding: 2px 9px; margin: 0 6px 4px 0; border-radius: 6px; font-size: 13.5px; background: var(--green-soft); color: var(--green-dark); }
+  .kw { color: #55605a; }
+</style>
+</head>
+<body>
+<script>
+const q = new URLSearchParams(location.search);
+const lang = q.get("lang") === "en" ? "en" : "zh";
+const scene = q.get("scene") || "popup";
+const COPY = {
+  zh: {
+    results: ["幫每篇文章寫好重點", "標題、摘要、關鍵字與主題，直接寫回你的 Notion 資料庫。"],
+    popup: ["AI 先整理，<br>你再確認。", "一鍵分析目前的 Notion 頁面，或批次處理所有待分析的文章。"],
+    review: ["分類，<br>由你決定。", "AI 提出暫定主題，採用、改用或自訂，都由你確認。"],
+    organizer: ["相近的主題，一次收好", "把重複或相近的暫定主題合併成分類，確認後才套用。"],
+    setup: ["設定一次，就能開始", "用自己的 Notion 與 AI 金鑰，不經過任何中介伺服器。"]
+  },
+  en: {
+    results: ["Key points for every article", "Title, summary, keywords and topics, written straight into your Notion database."],
+    popup: ["AI sorts first.<br>You confirm.", "Analyse the Notion page you're on, or process every pending article in one batch."],
+    review: ["You decide<br>the categories.", "The AI suggests provisional topics. Accept, swap or write your own."],
+    organizer: ["Tidy similar topics in one go", "Merge duplicate or related provisional topics into categories. Nothing is applied until you confirm."],
+    setup: ["Set up once, then go", "Your own Notion and AI keys, with no server in between."]
+  }
+}[lang];
+document.documentElement.lang = lang === "en" ? "en" : "zh-Hant";
+
+const wide = ["results", "organizer", "setup"].includes(scene);
+document.body.className = wide ? "top" : "side";
+const [headline, sub] = COPY[scene];
+document.body.insertAdjacentHTML("beforeend",
+  `<div class="copy"><p class="brand"><img src="/assets/icons/icon128.png" alt="">Siftly</p><h1>${headline}</h1><p class="sub">${sub}</p></div>`);
+
+const card = document.createElement("div");
+card.className = "card";
+document.body.appendChild(card);
+
+function embed(src, width, scale, height) {
+  const frame = document.createElement("iframe");
+  frame.src = src;
+  frame.style.width = `${width}px`;
+  frame.style.height = `${height / scale}px`;
+  frame.style.transform = `scale(${scale})`;
+  card.style.width = `${width * scale}px`;
+  card.style.height = `${height}px`;
+  card.appendChild(frame);
+  return frame;
+}
+
+if (scene === "results") {
+  const H = lang === "en"
+    ? ["Name", "AI Title", "AI Summary", "AI Keywords", "AI Topics"]
+    : ["名稱", "AI 標題", "AI 摘要", "AI 關鍵字", "AI 主題"];
+  const rows = lang === "en" ? [
+    ["How sourdough starters really work", "Sourdough starter basics", "Explains how flour and water become a living starter, and what to expect in the first week.", "sourdough | starter | baking | fermentation", ["Cooking"]],
+    ["Finally back in the mountains! Left the laptop at home this week, just walking, eating and sleeping. The hut dinners were unreal 🥹 Sharing the route and costs for anyone planning a trip", "A slow week in the Alps", "A week of easy hikes and mountain huts, with notes on routes, gear and costs.", "Alps | hiking | huts | itinerary", ["Travel"]],
+    ["Notes on typography for small screens", "Type for small screens", "Practical rules for size, spacing and line length when text has to fit a phone.", "typography | mobile | readability | spacing", ["Design"]],
+    ["Random thought: are people who actually finish a long article getting rarer? I've been forcing myself to read one a day for a month and honestly the results surprised me, so here's what changed...", "The case for long reads", "Argues that long articles still earn their place for depth and focus.", "reading | attention | long-form | habits", ["Reading", "Habits"]],
+    ["Weeknight noodles, three ways", "Three quick noodle dinners", "Three fast noodle recipes built from pantry staples.", "noodles | recipes | weeknight | pantry", ["Cooking"]],
+    ["One year of journaling today. I only meant to try it for fun but it genuinely changed a lot, so here are a few things I noticed, for anyone thinking of starting", "A year of journaling, in review", "Reflects on what daily writing changed: clearer priorities and a calmer evening routine.", "journaling | habits | reflection | routine", ["Habits"]],
+    ["A beginner's guide to index funds", "Index funds, explained simply", "Explains what an index fund is, how fees work and why many people start there.", "index funds | investing | fees | basics", ["Money"]]
+  ] : [
+    ["酸種麵包的酵母到底怎麼養", "酸種酵母入門", "說明麵粉與水如何養成活的酵母，以及第一週會遇到的狀況。", "酸種 | 酵母 | 烘焙 | 發酵", ["料理"]],
+    ["終於回到山上了！這週沒帶筆電，每天就是走路、吃飯、睡覺，山屋的晚餐真的好吃到不行 🥹 附上路線跟花費給想去的人參考", "阿爾卑斯慢旅一週", "一週輕鬆健行與山屋住宿，記錄路線、裝備與花費。", "阿爾卑斯 | 健行 | 山屋 | 行程", ["旅行"]],
+    ["給小螢幕的排版筆記", "小螢幕的文字排版", "文字要放進手機時，字級、行距與行寬的實用原則。", "排版 | 手機 | 可讀性 | 間距", ["設計"]],
+    ["突然想到，現在還會把一整篇長文讀完的人是不是越來越少了？我最近硬逼自己每天讀一篇，一個月後發現結果跟我想的不太一樣，來分享一下", "為長文辯護", "主張長文在深度與專注上，仍有不可取代的價值。", "閱讀 | 專注 | 長文 | 習慣", ["閱讀", "習慣"]],
+    ["平日晚餐的三種拌麵", "三款快速拌麵晚餐", "用家中常備食材做出的三種快速拌麵。", "拌麵 | 食譜 | 平日晚餐 | 常備食材", ["料理"]],
+    ["寫日記滿一年了。本來只是想試試看，沒想到真的改變蠻多的，分享幾個我自己的心得，給也想開始的人參考", "一年日記回顧", "回顧每天書寫帶來的改變：優先順序更清楚，晚上的步調也更平靜。", "日記 | 習慣 | 回顧 | 生活節奏", ["習慣"]],
+    ["新手也看得懂的指數基金", "指數基金簡單說", "說明指數基金是什麼、費用怎麼算，以及為什麼很多人從這裡開始。", "指數基金 | 投資 | 費用 | 入門", ["理財"]]
+  ];
+  const widths = ["22%", "16%", "30%", "20%", "12%"];
+  card.style.width = "1040px";
+  card.style.height = "596px";
+  card.innerHTML = `<table><colgroup>${widths.map(w => `<col style="width:${w}">`).join("")}</colgroup>
+    <thead><tr>${H.map(h => `<th>${h}</th>`).join("")}</tr></thead>
+    <tbody>${rows.map(r => `<tr><td class="name"><div>${r[0]}</div></td><td>${r[1]}</td><td>${r[2]}</td><td class="kw">${r[3]}</td><td>${r[4].map(t => `<span class="chip">${t}</span>`).join("")}</td></tr>`).join("")}</tbody></table>`;
+} else if (scene === "popup" || scene === "review") {
+  const frame = embed(`/popup.html?lang=${lang}&scene=${scene}`, 390, 1.25, 740);
+  card.style.top = "30px";
+  frame.addEventListener("load", () => setTimeout(() => {
+    // The review card is the point of this scene; the status panel above it would push its buttons off the card.
+    if (scene === "review") {
+      for (const part of frame.contentDocument.querySelectorAll(".status-panel, .actions, .recent-section, footer")) part.hidden = true;
+    }
+    const shell = frame.contentDocument.querySelector(".app");
+    const h = Math.min(shell.getBoundingClientRect().height * 1.25 + 8, 740);
+    card.style.height = `${h}px`;
+    card.style.top = `${(800 - h) / 2}px`;
+    frame.style.height = `${h / 1.25}px`;
+  }, 700));
+} else {
+  const frame = embed(`/options.html?lang=${lang}&scene=${scene}`, 820, 1, 596);
+  frame.addEventListener("load", () => setTimeout(() => {
+    const win = frame.contentWindow;
+    const doc = frame.contentDocument;
+    doc.documentElement.style.scrollbarWidth = "none";
+    if (scene === "organizer") {
+      const panel = doc.querySelector("#topic-organizer-panel");
+      if ("open" in panel) panel.open = true;
+      win.scrollTo(0, panel.getBoundingClientRect().top + win.scrollY - 24);
+    } else {
+      win.scrollTo(0, 0);
+    }
+  }, 900));
+}
+</script>
+</body>
+</html>
